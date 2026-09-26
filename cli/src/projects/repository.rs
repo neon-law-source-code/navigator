@@ -2787,15 +2787,17 @@ jobs:
         );
     }
 
-    /// Application manifest resolution remains centralized in the CLI for
-    /// this transition; the portal build itself now targets the fixed path.
+    /// LAW-75: the workflow uses the fixed portal path instead of asking the
+    /// deprecated CLI manifest-discovery command.
     #[test]
-    fn the_application_steps_discover_every_workspace_at_run_time() {
+    fn the_application_steps_use_the_fixed_portal_manifest() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(
-            generated.contains("navigator project applications --manifest"),
+            generated.contains("package_json_file: portal/package.json"),
             "{generated}"
         );
+        assert!(generated.contains("hashFiles('portal/package.json') != ''"));
+        assert!(!generated.contains("navigator project applications --manifest"));
         assert!(
             generated.contains("navigator project portal --dir ."),
             "{generated}"

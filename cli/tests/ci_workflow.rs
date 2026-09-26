@@ -21,46 +21,28 @@ fn project_gate_workflow() -> serde_yaml::Value {
     serde_yaml::from_str(&source).expect("project-gate.yml parses as YAML")
 }
 
-/// ENG-674: `verify` (the only remaining job that sets up pnpm, now that
-/// `lint`'s duplicate application-linting has folded into it) reads the
-/// manifest path from `navigator project applications --manifest`
-/// rather than hard-coding one of the three layouts `application_workspaces`
-/// admits.
-#[test]
-fn the_project_gate_derives_the_pnpm_manifest_rather_than_hard_coding_one() {
-    let workflow = project_gate_workflow();
-    let jobs = workflow["jobs"].as_mapping().expect("project gate jobs");
-    let mut pnpm_setup_steps = 0;
+fn project_publish_workflow() -> serde_yaml::Value {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".github")
+        .join("workflows")
+        .join("project-publish.yml");
+    let source = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+    serde_yaml::from_str(&source).expect("project-publish.yml parses as YAML")
+}
 
-    for (job_name, job) in jobs {
-        let Some(steps) = job["steps"].as_sequence() else {
-            continue;
-        };
-        let locates_manifest = steps
-            .iter()
-            .any(|step| step["id"].as_str() == Some("application"));
-        for (index, step) in steps.iter().enumerate() {
-            if step["uses"].as_str()
-                != Some("pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413")
-            {
-                continue;
-            }
-            pnpm_setup_steps += 1;
-            assert_eq!(
-                step["with"]["package_json_file"].as_str(),
-                Some("${{ steps.application.outputs.manifest }}"),
-                "{job_name:?} step {index} must read the manifest the CLI located"
-            );
-            assert!(
-                locates_manifest,
-                "{job_name:?} must locate the manifest before pnpm setup"
-            );
-        }
+/// LAW-75: the portal manifest has a fixed path, so workflows use it directly
+/// and skip setup when that package file is absent.
+#[test]
+fn project_workflows_use_the_fixed_portal_manifest() {
+    for workflow in [project_gate_workflow(), project_publish_workflow()] {
+        let source = serde_yaml::to_string(&workflow).expect("serialize workflow for assertions");
+        assert!(source.contains("hashFiles('portal/package.json') != ''"));
+        assert!(source.contains("package_json_file: portal/package.json"));
+        assert!(!source.contains("navigator project applications --manifest"));
+        assert!(!source.contains("id: application"));
     }
-    assert_eq!(
-        pnpm_setup_steps, 1,
-        "verify must keep its one pnpm setup step pinned, now that lint has folded into it"
-    );
 }
 
 /// Every job installs the CLI through the shared composite action

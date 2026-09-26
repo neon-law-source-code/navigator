@@ -29,6 +29,23 @@ pub fn run_deprecated_build(dir: &Path) -> ExitCode {
     run(dir)
 }
 
+/// Keep old reusable workflow calls working for one release.
+pub fn run_deprecated_applications(dir: &Path, manifest: bool) -> ExitCode {
+    eprintln!("navigator: `project applications` is deprecated; use `portal/package.json`");
+    if repository::portal_application(dir).is_some() {
+        if manifest {
+            if dir == Path::new(".") {
+                println!("portal/package.json");
+            } else {
+                println!("{}", dir.join("portal/package.json").display());
+            }
+        } else {
+            println!("portal");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 /// Same as [`run`], but with `pnpm_dir` prepended to the child processes'
 /// `PATH` when given — how tests point this at a stub `pnpm` without
 /// touching the real process environment.

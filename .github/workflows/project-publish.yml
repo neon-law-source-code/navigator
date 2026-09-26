@@ -63,25 +63,14 @@ jobs:
       # this workflow reads no manifest of its own, so it takes the default,
       # navigator.yaml's own version.
       - uses: neon-law-source-code/navigator/.github/actions/navigator-install@26.9.26
-      # Application discovery lives in the CLI (`cli/src/projects/repository.rs`)
-      # now, not in this workflow. `dist_dir` is a plain path-suffix trim of
-      # the manifest the CLI already resolved, not a second detection pass.
-      - name: locate the application manifest
-        id: application
-        run: |
-          manifest="$(navigator project applications --manifest)"
-          echo "manifest=${manifest}" >> "${GITHUB_OUTPUT}"
-          if [ -n "${manifest}" ]; then
-              echo "dist_dir=${manifest%/package.json}/dist" >> "${GITHUB_OUTPUT}"
-          fi
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.application.outputs.manifest != ''
+        if: hashFiles('portal/package.json') != ''
         with:
           node-version: "22"
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: steps.application.outputs.manifest != ''
+        if: hashFiles('portal/package.json') != ''
         with:
-          package_json_file: ${{ steps.application.outputs.manifest }}
+          package_json_file: portal/package.json
       # Installs, lints, and builds the one portal under portal/.
       - name: navigator project portal
         run: navigator project portal --dir .
@@ -101,10 +90,10 @@ jobs:
       # carries no GCP project id, so no string transform of it can be trusted
       # to land on the bucket the grant actually names.
       - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.9.26
-        if: steps.application.outputs.dist_dir != ''
+        if: hashFiles('portal/package.json') != ''
         with:
           applications_bucket: ${{ vars.NAVIGATOR_APP_PUBLISHER_BUCKET }}
           workload_identity_provider: ${{ vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
           service_account: ${{ vars.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
           repository: ${{ needs.read-manifest.outputs.project }}
-          dist_dir: ${{ steps.application.outputs.dist_dir }}
+          dist_dir: portal/dist

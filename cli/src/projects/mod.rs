@@ -12,7 +12,6 @@
 //! connection of its own, even against a local deployment: the site does
 //! that work and the CLI only ever holds a bearer token.
 
-pub mod applications;
 pub mod cli_docs;
 pub mod doctor;
 pub mod document_check;

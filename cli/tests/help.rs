@@ -197,23 +197,14 @@ fn site_sync_help_discloses_defaults_and_preserved_keys() {
 /// The retired `projects application` verb (singular, for registering one
 /// application name) is asserted gone rather than merely absent from this
 /// list: a Project has one portal, so there was no application name for an
-/// operator to register. `applications` (plural) is ENG-674's read-only
-/// discovery query. `build` remains as a hidden one-release alias for `portal`.
+/// operator to register. `build` and `applications` remain hidden aliases
+/// during their one-release transitions to the portal-only interface.
 #[test]
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["project", "--help"])),
         vec![
-            "applications",
-            "close",
-            "create",
-            "doctor",
-            "drift",
-            "gate",
-            "portal",
-            "setup",
-            "skill",
-            "sync",
+            "close", "create", "doctor", "drift", "gate", "portal", "setup", "skill", "sync",
             "help"
         ]
     );
@@ -237,6 +228,29 @@ fn hidden_project_build_alias_warns_during_the_transition() {
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr)
         .contains("`project build` is deprecated; use `project portal`"));
+}
+
+#[test]
+fn hidden_project_applications_alias_warns_and_prints_the_fixed_manifest() {
+    let root = tempfile::tempdir().expect("temporary Project repository");
+    let portal = root.path().join("portal");
+    std::fs::create_dir_all(&portal).expect("create portal");
+    std::fs::write(portal.join("package.json"), "{}\n").expect("write portal manifest");
+    let output = Command::cargo_bin("navigator")
+        .unwrap()
+        .current_dir(root.path())
+        .args(["project", "applications", "--manifest"])
+        .output()
+        .expect("run the legacy alias");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "portal/package.json"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("`project applications` is deprecated")
+    );
 }
 
 /// Two commands are spelled `doctor` and they diagnose different things.

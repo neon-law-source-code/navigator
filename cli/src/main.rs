@@ -633,20 +633,17 @@ enum ProjectsCmd {
     /// Deprecated alias for `portal`, retained for one release.
     #[command(hide = true)]
     Build {
-        /// Repository root holding the application(s). Defaults to the
-        /// current directory.
+        /// Repository root holding `portal/`. Defaults to current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
     },
-    /// List the application(s) this Project repository declares, in the
-    /// same discovery order `build` runs them in.
+    /// Deprecated application manifest lookup, retained for one release.
+    #[command(hide = true)]
     Applications {
-        /// Repository root holding the application(s). Defaults to the
-        /// current directory.
+        /// Repository root holding `portal/`. Defaults to current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
-        /// Print only the one concrete `package.json` path pnpm's own
-        /// version pin needs, instead of every discovered application.
+        /// Print `portal/package.json` for one-release workflow compatibility.
         #[arg(long)]
         manifest: bool,
     },
@@ -2758,7 +2755,9 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Gate { ci, check, deep } => run_gate(ci, check, deep).await,
         ProjectsCmd::Portal { dir } => projects::portal::run(&dir),
         ProjectsCmd::Build { dir } => projects::portal::run_deprecated_build(&dir),
-        ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
+        ProjectsCmd::Applications { dir, manifest } => {
+            projects::portal::run_deprecated_applications(&dir, manifest)
+        }
         ProjectsCmd::Setup {
             project_code,
             all,

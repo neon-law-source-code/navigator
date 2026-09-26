@@ -907,7 +907,7 @@ async fn home_explains_retainer_and_additional_fees() {
         "The engagement letter sets scope, rates, and refunds.",
         "A daily minimum that keeps us on the line.",
         "Expedited reviews.",
-        "gives you a practical next step within one business day.",
+        "A lawyer reviews your contract and provides feedback within in one business day.",
         "Each contract includes up to 50 pages. Each additional page is $5.",
         "US letter size (8.5 × 11 inches), in Times New Roman larger than 10 pt.",
         "Day-to-day questions over Slack",

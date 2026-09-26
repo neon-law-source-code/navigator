@@ -30,23 +30,14 @@ use thiserror::Error;
 /// Failure starting a workflow invocation through the ingress.
 #[derive(Debug, Error)]
 pub enum TriggerError {
-    /// The HTTP request never produced a response (DNS, connect,
-    /// timeout). Carries the URL so logs name the unreachable ingress.
-    #[error("transport error calling {url}: {source}")]
-    Transport {
-        url: String,
-        #[source]
-        source: reqwest::Error,
-    },
+    /// The HTTP request never produced a response (DNS, connect, timeout).
+    #[error("workflow trigger transport failure")]
+    Transport,
     /// The ingress responded with a non-2xx status. A `401` here is
     /// the classic "bearer token missing or wrong" — the bug that
     /// silently stopped the nightly archives email.
-    #[error("workflow trigger {url} returned {status}: {body}")]
-    Rejected {
-        url: String,
-        status: reqwest::StatusCode,
-        body: String,
-    },
+    #[error("workflow trigger rejected with status {}", status.as_u16())]
+    Rejected { status: reqwest::StatusCode },
 }
 
 /// POST to the Restate ingress to start one invocation of
@@ -74,8 +65,13 @@ pub enum TriggerError {
 #[tracing::instrument(
     level = "info",
     name = "workflow.trigger",
-    skip(auth_token, body),
-    fields(service = service, key = key, handler = handler, one_way)
+    skip(ingress, auth_token, key, body),
+    fields(
+        service = service,
+        handler = handler,
+        operation = "workflow trigger",
+        one_way
+    )
 )]
 pub async fn start_workflow<B: Serialize + ?Sized>(
     ingress: &str,
@@ -132,17 +128,20 @@ pub async fn start_workflow<B: Serialize + ?Sized>(
     }
 
     // Record the outcome as a metric (`navigator.workflow.trigger.fired`) and a
-    // structured event on every path — identifiers and counts only, never the
-    // request body. This is the single instrumentation point every trigger
-    // funnels through, so a service whose scheduled fire silently stops shows
-    // up as a flat counter line and an absent "accepted" event.
-    let resp = match req.send().await {
-        Ok(resp) => resp,
-        Err(source) => {
-            telemetry::record_trigger_fired(service, telemetry::outcome::TRANSPORT_ERROR);
-            tracing::error!(service, %url, error = %source, "workflow trigger transport error");
-            return Err(TriggerError::Transport { url, source });
-        }
+    // structured event on every path — safe fields and outcome counts only,
+    // never identifiers or request content. This is the single instrumentation
+    // point every trigger funnels through, so a service whose scheduled fire
+    // silently stops shows up as a flat counter line and an absent "accepted" event.
+    let Ok(resp) = req.send().await else {
+        telemetry::record_trigger_fired(service, telemetry::outcome::TRANSPORT_ERROR);
+        tracing::error!(
+            service,
+            handler,
+            operation = "workflow trigger",
+            outcome = telemetry::outcome::TRANSPORT_ERROR,
+            "workflow trigger failed"
+        );
+        return Err(TriggerError::Transport);
     };
     let status = resp.status();
     let resp_body = resp.text().await.unwrap_or_default();
@@ -150,19 +149,21 @@ pub async fn start_workflow<B: Serialize + ?Sized>(
         telemetry::record_trigger_fired(service, telemetry::outcome::REJECTED);
         tracing::error!(
             service,
+            handler,
+            operation = "workflow trigger",
             status = status.as_u16(),
+            outcome = telemetry::outcome::REJECTED,
             "workflow trigger rejected by ingress"
         );
-        return Err(TriggerError::Rejected {
-            url,
-            status,
-            body: resp_body,
-        });
+        return Err(TriggerError::Rejected { status });
     }
     telemetry::record_trigger_fired(service, telemetry::outcome::ACCEPTED);
     tracing::info!(
         service,
+        handler,
+        operation = "workflow trigger",
         status = status.as_u16(),
+        outcome = telemetry::outcome::ACCEPTED,
         "workflow trigger accepted"
     );
     Ok(resp_body)
@@ -172,8 +173,35 @@ pub async fn start_workflow<B: Serialize + ?Sized>(
 mod tests {
     use super::{start_workflow, TriggerError};
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::fmt::MakeWriter;
     use wiremock::matchers::{body_partial_json, header, header_exists, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[derive(Clone)]
+    struct Buffer(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("capture lock")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Buffer {
+        type Writer = Buffer;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
 
     #[tokio::test]
     async fn posts_to_service_key_handler_path() {
@@ -334,37 +362,104 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_success_status_becomes_rejected_error() {
+    async fn rejected_error_and_trace_are_status_only() {
         let server = MockServer::start().await;
+        let receipt = "receipt-sentinel-906";
+        let invocation = "invocation-sentinel-906";
+        let request_url = format!("{}/EmailSummary/{receipt}/run/send", server.uri());
         Mock::given(method("POST"))
-            .and(path("/Archives/d/run"))
-            .respond_with(ResponseTemplate::new(401).set_body_string("missing bearer"))
+            .and(path(format!("/EmailSummary/{receipt}/run/send")))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_string(format!("rejected {receipt} {invocation} {request_url}")),
+            )
             .mount(&server)
             .await;
 
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(Buffer(output.clone()))
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
         let err = start_workflow(
             &server.uri(),
             None,
+            "EmailSummary",
+            receipt,
+            "run",
+            &json!({}),
+            true,
+        )
+        .await
+        .unwrap_err();
+        drop(guard);
+        let message = err.to_string();
+        let trace = String::from_utf8(output.lock().expect("capture lock").clone())
+            .expect("capture is UTF-8");
+
+        match err {
+            TriggerError::Rejected { status } => {
+                assert_eq!(status.as_u16(), 401);
+            }
+            other @ TriggerError::Transport => panic!("expected Rejected, got {other:?}"),
+        }
+        assert_eq!(message, "workflow trigger rejected with status 401");
+        for rendered in [&message, &trace] {
+            assert!(!rendered.contains(receipt), "unsafe receipt in {rendered}");
+            assert!(
+                !rendered.contains(invocation),
+                "unsafe invocation in {rendered}"
+            );
+            assert!(!rendered.contains(&request_url), "unsafe URL in {rendered}");
+        }
+        assert!(trace.contains("EmailSummary"));
+        assert!(trace.contains("run"));
+        assert!(trace.contains("rejected"));
+        assert!(trace.contains("401"));
+    }
+
+    #[tokio::test]
+    async fn transport_error_and_trace_are_status_only() {
+        let ingress = "http://[::1";
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(Buffer(output.clone()))
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+        let err = start_workflow(
+            ingress,
+            None,
             "Archives",
-            "d",
+            "receipt-sentinel-transport-906",
             "run",
             &json!({}),
             false,
         )
         .await
         .unwrap_err();
-        match err {
-            TriggerError::Rejected { status, body, .. } => {
-                assert_eq!(status.as_u16(), 401);
-                assert!(body.contains("missing bearer"));
-            }
-            other @ TriggerError::Transport { .. } => panic!("expected Rejected, got {other:?}"),
-        }
+        drop(guard);
+        let message = err.to_string();
+        let trace = String::from_utf8(output.lock().expect("capture lock").clone())
+            .expect("capture is UTF-8");
+
+        assert!(matches!(err, TriggerError::Transport));
+        assert_eq!(message, "workflow trigger transport failure");
+        assert!(!message.contains(ingress));
+        assert!(!trace.contains(ingress));
+        assert!(!trace.contains("receipt-sentinel-transport-906"));
+        assert!(trace.contains("Archives"));
+        assert!(trace.contains("run"));
+        assert!(trace.contains("transport_error"));
     }
 
     #[tokio::test]
     async fn unreachable_ingress_becomes_transport_error() {
-        // Port 0 with a reserved TEST-NET host never connects.
         let err = start_workflow(
             "http://192.0.2.1:1",
             None,
@@ -376,6 +471,6 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(matches!(err, TriggerError::Transport { .. }));
+        assert!(matches!(err, TriggerError::Transport));
     }
 }

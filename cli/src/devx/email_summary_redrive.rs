@@ -94,7 +94,7 @@ async fn redrive_with(
         true,
     )
     .await
-    .context("resubmit the EmailSummary workflow")?;
+    .map_err(|error| anyhow::anyhow!("email-summary trigger failed: {error}"))?;
 
     println!("EmailSummary workflow resubmitted");
     Ok(())
@@ -154,15 +154,18 @@ async fn find_invocation_id(
         .json(&serde_json::json!({ "query": query }))
         .send()
         .await
-        .context("query sys_invocation")?;
+        .map_err(|_| anyhow::anyhow!("email-summary purge transport failure"))?;
     if !response.status().is_success() {
         let status = response.status();
-        bail!("query sys_invocation failed with status {status}");
+        bail!(
+            "email-summary purge rejected with status {}",
+            status.as_u16()
+        );
     }
     let body: serde_json::Value = response
         .json()
         .await
-        .context("parse sys_invocation response")?;
+        .map_err(|_| anyhow::anyhow!("email-summary purge response was invalid"))?;
     Ok(body
         .get("rows")
         .and_then(serde_json::Value::as_array)
@@ -183,10 +186,13 @@ async fn delete_invocation(admin_url: &str, admin_token: &str, invocation_id: &s
         .bearer_auth(admin_token)
         .send()
         .await
-        .context("purge the retained invocation")?;
+        .map_err(|_| anyhow::anyhow!("email-summary purge transport failure"))?;
     if !response.status().is_success() {
         let status = response.status();
-        bail!("purge invocation failed with status {status}");
+        bail!(
+            "email-summary purge rejected with status {}",
+            status.as_u16()
+        );
     }
     Ok(())
 }
@@ -452,5 +458,95 @@ mod tests {
         purge_retained_invocation(&server.uri(), "admin-token", "EmailSummary", "receipt-1")
             .await
             .expect("purge succeeds");
+    }
+
+    #[tokio::test]
+    async fn redrive_trigger_failure_is_status_only() {
+        let db = store::surreal::test_support::mem().await;
+        let receipt_id = setup_receipt(&db).await;
+        let admin = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/query"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "rows": [] })),
+            )
+            .mount(&admin)
+            .await;
+        let ingress = MockServer::start().await;
+        let invocation = "invocation-sentinel-906";
+        let request_url = format!("{}/EmailSummary/{receipt_id}/run/send", ingress.uri());
+        Mock::given(method("POST"))
+            .and(path(format!("/EmailSummary/{receipt_id}/run/send")))
+            .respond_with(ResponseTemplate::new(503).set_body_string(format!(
+                "trigger failure {receipt_id} {invocation} {request_url}"
+            )))
+            .mount(&ingress)
+            .await;
+
+        let error = redrive_with(
+            &db,
+            &admin.uri(),
+            "admin-token",
+            None,
+            &test_config(&ingress.uri()),
+            receipt_id,
+        )
+        .await
+        .expect_err("the rejected trigger must fail redrive");
+        let message = error.to_string();
+        assert!(message.contains("503"));
+        for unsafe_value in [receipt_id.to_string(), invocation.to_string(), request_url] {
+            assert!(
+                !message.contains(&unsafe_value),
+                "unsafe value in redrive error: {message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn purge_failure_is_status_only() {
+        let server = MockServer::start().await;
+        let receipt = "receipt-sentinel-906";
+        let invocation = "invocation-sentinel-906";
+        let request_url = format!("{}/invocations/{invocation}", server.uri());
+        Mock::given(method("POST"))
+            .and(path("/query"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": [{ "id": invocation }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/invocations/{invocation}")))
+            .respond_with(ResponseTemplate::new(503).set_body_string(format!(
+                "purge failure {receipt} {invocation} {request_url}"
+            )))
+            .mount(&server)
+            .await;
+
+        let error =
+            purge_retained_invocation(&server.uri(), "admin-token", "EmailSummary", receipt)
+                .await
+                .expect_err("the rejected purge must fail");
+        let message = error.to_string();
+        assert!(message.contains("503"));
+        for unsafe_value in [receipt, invocation, request_url.as_str()] {
+            assert!(
+                !message.contains(unsafe_value),
+                "unsafe value in purge error: {message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn purge_transport_failure_is_status_only() {
+        let admin_url = "http://[::1";
+        let receipt = "receipt-sentinel-transport-906";
+        let error = purge_retained_invocation(admin_url, "admin-token", "EmailSummary", receipt)
+            .await
+            .expect_err("the unreachable purge endpoint must fail");
+        let message = error.to_string();
+        assert!(!message.contains(admin_url));
+        assert!(!message.contains(receipt));
     }
 }

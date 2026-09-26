@@ -293,9 +293,19 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   /app/api/projects/{id}/documents/{asset_id}/storage): Admin admitted
     //   through the route bypass; Lawyer, Client, and anonymous denied.
     // 478 + 4 = 482.
+    //
+    // + 5 for the admin matter testimonial role matrix: Owner/Admin admitted;
+    // Lawyer, Client, and anonymous denied. Matter participation remains a
+    // handler concern because it is not part of policy input.
+    // 482 + 5 = 487.
+    //
+    // + 7 for matter-scoped admin avatar upload and clear: Owner/Admin
+    // admitted, Client/Lawyer/anonymous denied for upload, and Admin admitted
+    // while Client is denied for clear.
+    // 487 + 7 = 494.
     assert_eq!(
         test_names.len(),
-        482,
+        494,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

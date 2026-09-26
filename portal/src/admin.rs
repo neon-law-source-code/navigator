@@ -661,6 +661,7 @@ fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<Adm
 /// participation row on the matter. The lawyer-only writes below additionally
 /// require the lawyer tier in their own handlers, which is what replaces the
 /// outer `/app/lawyer/*` policy rule those paths used to sit behind.
+#[allow(clippy::too_many_lines)]
 fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
     let prefix = APP_PROJECTS_PATH;
     // `{prefix}` (the list), `{prefix}/{code}` (the matter workbench), the forms,
@@ -694,6 +695,18 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
         .route(
             &format!("{prefix}/{{project_code}}/testimonial"),
             post(project_testimonial_save),
+        )
+        .route(
+            "/app/admin/projects/{project_code}/testimonial",
+            post(admin_project_testimonial_save),
+        )
+        .route(
+            "/app/admin/projects/{project_code}/people/{person_id}/avatar",
+            post(admin_project_person_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+        )
+        .route(
+            "/app/admin/projects/{project_code}/people/{person_id}/avatar/clear",
+            post(admin_project_person_avatar_clear),
         )
         .route(
             &format!("{prefix}/{{project_code}}/people"),
@@ -893,6 +906,188 @@ async fn project_testimonial_save(
             ))
             .into_response()
         }
+    }
+}
+
+/// `POST /app/admin/projects/{project_code}/testimonial` — an Owner/Admin
+/// records the client DRI's words without changing the client-facing form.
+/// The caller must also participate on the named matter; Rego can admit the
+/// system tier, but it cannot read the participation ledger.
+async fn admin_project_testimonial_save(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Path(code): Path<String>,
+    Form(input): Form<TestimonialForm>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(session) = session.as_ref() else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(project) = admin_matter_project(&state.surreal, session, &code).await else {
+        return not_found_response();
+    };
+    let Some(client_id) = store::projects::participations_for_project(&state.surreal, project.id)
+        .await
+        .ok()
+        .and_then(|rows| {
+            rows.into_iter().find_map(|row| {
+                (row.is_client_dri
+                    && store::projects::PARTICIPATION_CLIENT_SIDE
+                        .contains(&row.participation.as_str()))
+                .then_some(row.person_id)
+            })
+        })
+    else {
+        return not_found_response();
+    };
+    let request_public = match input.publication.as_str() {
+        "public" => true,
+        "private" => false,
+        _ => {
+            return Redirect::to(&format!(
+                "/app/projects/{code}?error={}",
+                encode_query_value(
+                    "Choose whether to keep the testimonial private or request public use."
+                )
+            ))
+            .into_response();
+        }
+    };
+    match store::testimonials::save_for_client_dri(
+        &state.surreal,
+        client_id,
+        project.id,
+        &store::testimonials::TestimonialSubmission {
+            quote: &input.quote,
+            attribution_label: (!input.attribution.trim().is_empty())
+                .then(|| input.attribution.trim().to_string()),
+            request_public,
+        },
+    )
+    .await
+    {
+        Ok(_) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(
+            store::testimonials::TestimonialError::NotAuthorized
+            | store::testimonials::TestimonialError::NotFound,
+        ) => not_found_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "admin testimonial: save failed");
+            Redirect::to(&format!(
+                "/app/projects/{code}?error={}",
+                encode_query_value("The testimonial could not be saved.")
+            ))
+            .into_response()
+        }
+    }
+}
+
+/// Resolve the admin's matter scope for a privileged write. This is separate
+/// from `can_manage_project_participation`: staffing an unassigned matter is
+/// intentionally broader than changing content owned by a matter participant.
+async fn admin_matter_project(
+    surreal: &store::surreal::SurrealDb,
+    session: &SessionData,
+    code: &str,
+) -> Option<store::projects::Project> {
+    if session.viewing_as_dri.is_some() {
+        return None;
+    }
+    let person_id = session.person_id?;
+    let project = store::projects::find_by_code(surreal, code)
+        .await
+        .ok()
+        .flatten()?;
+    store::projects::participation_for_person(surreal, person_id, project.id)
+        .await
+        .ok()
+        .flatten()?;
+    Some(project)
+}
+
+/// Resolve a target person who participates on the same matter as the acting
+/// admin. The existing global admin avatar route remains useful for directory
+/// administration; this matter route adds the narrower page-level boundary.
+async fn admin_matter_person(
+    state: &AdminState,
+    session: &SessionData,
+    code: &str,
+    person_id: Uuid,
+) -> Option<store::persons::Person> {
+    let project = admin_matter_project(&state.surreal, session, code).await?;
+    let person = store::persons::find_by_id(&state.surreal, person_id)
+        .await
+        .ok()
+        .flatten()?;
+    store::projects::participation_for_person(&state.surreal, person.id, project.id)
+        .await
+        .ok()
+        .flatten()?;
+    Some(person)
+}
+
+/// `POST /app/admin/projects/{project_code}/people/{person_id}/avatar` — set
+/// an avatar from the matter people list. Both the acting admin and target
+/// person must hold a participation row on the named matter.
+async fn admin_project_person_avatar_upload(
+    State(state): State<AdminState>,
+    Path((code, person_id)): Path<(String, Uuid)>,
+    cookies: tower_cookies::Cookies,
+    session: Option<Extension<SessionData>>,
+    mut multipart: Multipart,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(Extension(session_data)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(person) = admin_matter_person(&state, &session_data, &code, person_id).await else {
+        return not_found_response();
+    };
+    let (content_type, bytes) = match read_avatar_upload(
+        &cookies,
+        &session_data,
+        &mut multipart,
+        person_avatar_content_types(person.role),
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(response) => return response,
+    };
+    if person_avatar_is_public(person.role) {
+        if let Err(response) = validate_person_avatar_dimensions(&bytes, &content_type) {
+            return response;
+        }
+    }
+    match persist_person_avatar(&state, &person, &content_type, &bytes).await {
+        Ok(()) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(response) => response,
+    }
+}
+
+/// `POST /app/admin/projects/{project_code}/people/{person_id}/avatar/clear`
+/// — clear the target's avatar and its role-appropriate storage object.
+async fn admin_project_person_avatar_clear(
+    State(state): State<AdminState>,
+    Path((code, person_id)): Path<(String, Uuid)>,
+    session: Option<Extension<SessionData>>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(session) = session.as_ref() else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(person) = admin_matter_person(&state, session, &code, person_id).await else {
+        return not_found_response();
+    };
+    match clear_person_avatar(&state, &person).await {
+        Ok(()) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(response) => response,
     }
 }
 

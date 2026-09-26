@@ -219,6 +219,7 @@ pub fn AdminUnassignedProjectDetail() -> Element {
                 csrf: view.csrf_token.clone(),
                 participations: view.participations.clone(),
                 is_admin: true,
+                can_manage_avatars: false,
                 may_govern_lawyer_side: true,
                 may_govern_client_side: true,
             }

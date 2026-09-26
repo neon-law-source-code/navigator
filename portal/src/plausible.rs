@@ -25,6 +25,7 @@ pub const PLAUSIBLE_ORIGIN: &str = "https://plausible.io";
 /// The first-party stub that queues calls until the vendor script arrives.
 pub const PLAUSIBLE_LOADER_HREF: &str = "/public/js/plausible.js";
 const UNCONFIGURED_DEATH_AND_DIVORCE_ID: &str = "pa-unconfigured-death-and-divorce";
+const UNCONFIGURED_CYBER_INJURY_ID: &str = "pa-unconfigured-cyber-injury-law";
 
 /// The Plausible script id (the `pa-…` stem of the snippet's script URL) for
 /// `key`'s public site.
@@ -33,7 +34,7 @@ const UNCONFIGURED_DEATH_AND_DIVORCE_ID: &str = "pa-unconfigured-death-and-divor
 #[must_use]
 pub const fn script_id(key: BrandKey) -> Option<&'static str> {
     match key {
-        BrandKey::CyberInjuryLaw => None,
+        BrandKey::CyberInjuryLaw => Some(UNCONFIGURED_CYBER_INJURY_ID),
         BrandKey::Neon => Some("pa-dktgfAn-5R5ufpXARu6zb"),
         BrandKey::Vesta => Some("pa-0NXcwgtQALjMsqFs8YbfN"),
         BrandKey::DeleteYourData => Some("pa-h5nRTkQB8L0g9LJDlCctG"),
@@ -94,7 +95,9 @@ impl PlausibleSite {
         let Some(script_id) = self.script_id else {
             return String::new();
         };
-        if script_id == UNCONFIGURED_DEATH_AND_DIVORCE_ID {
+        if script_id == UNCONFIGURED_DEATH_AND_DIVORCE_ID
+            || script_id == UNCONFIGURED_CYBER_INJURY_ID
+        {
             return String::new();
         }
         format!(
@@ -107,7 +110,9 @@ impl PlausibleSite {
 
 #[cfg(test)]
 mod tests {
-    use super::{enabled_from, script_id, PlausibleSite, PLAUSIBLE_LOADER_HREF};
+    use super::{
+        enabled_from, script_id, PlausibleSite, PLAUSIBLE_LOADER_HREF, UNCONFIGURED_CYBER_INJURY_ID,
+    };
     use views::brand::BrandKey;
 
     /// `enabled_from` end to end, over every shape the deployment environment
@@ -161,7 +166,10 @@ mod tests {
 
     #[test]
     fn an_unconfigured_campaign_has_no_analytics() {
-        assert_eq!(script_id(BrandKey::CyberInjuryLaw), None);
+        assert_eq!(
+            script_id(BrandKey::CyberInjuryLaw),
+            Some(UNCONFIGURED_CYBER_INJURY_ID)
+        );
         assert!(PlausibleSite::for_brand(BrandKey::CyberInjuryLaw)
             .script_tags()
             .is_empty());

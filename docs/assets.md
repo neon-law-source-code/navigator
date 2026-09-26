@@ -241,11 +241,10 @@ the origin does not serve.
 
 ### CyberInjuryLaw's fonts and campaign
 
-CyberInjuryLaw is a Dioxus house-brand preview. `NAVIGATOR_LOCAL_CYBER_INJURY_LAW_PORT` selects its local port, and the
-brand stays outside `BrandKey::LIVE` until launch. The tracked flexed-muscle SVG lives at
-`server/public/brand/cyber-injury-law.svg`. The header's QR code at `server/public/brand/cyber-consultation-qr.svg`
-encodes `https://www.CyberInjuryLaw.com/consultation`. That route redirects to the brand's configured booking URL, so a
-provider change leaves printed codes valid.
+CyberInjuryLaw is a Dioxus house brand. `NAVIGATOR_LOCAL_CYBER_INJURY_LAW_PORT` selects its local preview port. The
+tracked flexed-muscle SVG lives at `server/public/brand/cyber-injury-law.svg`. The header's QR code at
+`server/public/brand/cyber-consultation-qr.svg` encodes `https://www.CyberInjuryLaw.com/consultation`. That route
+redirects to the brand's configured booking URL, so a provider change leaves printed codes valid.
 
 The server and browser hydrate the same `HomePageEntry` root. The server keeps its rendered head during hydration, so
 the campaign controls work under the existing strict CSP. The public asset lane restores campaign PNGs to the ignored

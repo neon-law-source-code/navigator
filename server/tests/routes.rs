@@ -9834,6 +9834,13 @@ const LIVE_HOME_CONTRACTS: &[(views::brand::BrandKey, LiveHomeContract)] = &[
             copy: "For endings, transitions, and the beyond.",
         },
     ),
+    (
+        views::brand::BrandKey::CyberInjuryLaw,
+        LiveHomeContract::Authored {
+            title: "<title>CyberInjuryLaw | Home</title>",
+            copy: "WE USE AI TO",
+        },
+    ),
 ];
 
 fn live_home_contract(key: views::brand::BrandKey) -> &'static LiveHomeContract {

@@ -70,7 +70,7 @@ const COMPILED_SITES: &[CompiledSite] = &[
     CompiledSite {
         key: "cyber-injury-law",
         www: "www.cyberinjurylaw.com",
-        live: false,
+        live: true,
     },
 ];
 
@@ -194,6 +194,7 @@ mod tests {
                 "summons",
                 "daybridge",
                 "death-and-divorce",
+                "cyber-injury-law",
             ],
             "the live listing set is the launched house brands"
         );

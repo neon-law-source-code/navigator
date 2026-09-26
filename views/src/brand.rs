@@ -988,6 +988,7 @@ impl BrandKey {
         Self::Summons,
         Self::Daybridge,
         Self::DeathAndDivorce,
+        Self::CyberInjuryLaw,
     ];
 
     #[must_use]

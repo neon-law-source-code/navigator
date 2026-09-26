@@ -861,7 +861,8 @@ mod tests {
                 "Lawyer Shook",
                 "Summons Defense",
                 "Daybridge Divorce Law",
-                "Death & Divorce"
+                "Death & Divorce",
+                "CyberInjuryLaw"
             ]
         );
         assert!(chrome.brands[0].current, "the default brand is current");

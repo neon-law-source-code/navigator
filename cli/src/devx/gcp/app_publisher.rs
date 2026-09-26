@@ -189,12 +189,18 @@ pub fn publisher_role_name(project_id: &str) -> String {
     format!("projects/{project_id}/roles/{PUBLISHER_ROLE_ID}")
 }
 
-/// The IAM condition confining the publisher to one Project's portal prefix.
+/// The IAM condition confining the publisher to one Project's portal prefix
+/// and its publish manifest.
 ///
-/// Two clauses, and both are needed. The `startsWith` clause covers every object
-/// under the prefix; the equality clause covers the prefix path *itself*, which
-/// gcloud probes as though it were an object before writing — without it that
-/// probe is denied and the publish fails before uploading anything.
+/// Three clauses, and all are needed. The `startsWith` clause covers every
+/// object under the prefix; the first equality clause covers the prefix path
+/// *itself*, which gcloud probes as though it were an object before writing —
+/// without it that probe is denied and the publish fails before uploading
+/// anything. The second equality clause names exactly one object, the
+/// manifest ([`store::sample_project::manifest_key`]) the publish Action
+/// reads and rewrites to prune what a build dropped. It sits beside the
+/// prefix, not under it, so the gateway can never serve it; without this
+/// clause every publish uploads and then fails red writing it.
 ///
 /// `code` is the Project code, which is also the repository name: the Action
 /// derives the object prefix from `github.event.repository.name`, so the
@@ -202,7 +208,14 @@ pub fn publisher_role_name(project_id: &str) -> String {
 #[must_use]
 pub fn publisher_condition_expression(bucket: &str, code: &str) -> String {
     let prefix = format!("projects/_/buckets/{bucket}/objects/{code}/portal");
-    format!("resource.name == \"{prefix}\" || resource.name.startsWith(\"{prefix}/\")")
+    let manifest = format!(
+        "projects/_/buckets/{bucket}/objects/{}",
+        store::sample_project::manifest_key(code)
+    );
+    format!(
+        "resource.name == \"{prefix}\" || resource.name.startsWith(\"{prefix}/\") \
+         || resource.name == \"{manifest}\""
+    )
 }
 
 /// The account id of `code`'s publisher, or a refusal if it cannot be derived.
@@ -1342,7 +1355,8 @@ mod tests {
     const PUBLISHER_MEMBER: &str =
         "serviceAccount:nav-pub-sample-litigation@proj.iam.gserviceaccount.com";
 
-    /// The condition names the prefix itself *and* everything beneath it.
+    /// The condition names the prefix itself, everything beneath it, and the
+    /// one manifest object beside it.
     ///
     /// The equality clause is not redundant. gcloud probes the destination
     /// prefix as though it were an object before writing, and a condition
@@ -1350,7 +1364,7 @@ mod tests {
     /// then fails before uploading anything, with a `403` on the prefix path and
     /// no trailing slash.
     #[test]
-    fn the_condition_covers_the_prefix_path_and_its_children_only() {
+    fn the_condition_covers_the_prefix_path_its_children_and_the_manifest_only() {
         let expression = publisher_condition_expression("proj-applications", "sample-litigation");
         assert!(expression.contains(
             "resource.name == \"projects/_/buckets/proj-applications/objects/\
@@ -1359,6 +1373,14 @@ mod tests {
         assert!(expression.contains(
             "resource.name.startsWith(\"projects/_/buckets/proj-applications/objects/\
              sample-litigation/portal/\")"
+        ));
+        // The manifest beside the prefix is named exactly, not by prefix.
+        assert!(expression.contains(
+            "resource.name == \"projects/_/buckets/proj-applications/objects/\
+             sample-litigation/.publish-manifest\""
+        ));
+        assert!(!expression.contains(
+            "startsWith(\"projects/_/buckets/proj-applications/objects/sample-litigation/\")"
         ));
         // Another Project's prefix is not named at all.
         assert!(!expression.contains("sample-estate"));

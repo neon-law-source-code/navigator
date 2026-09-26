@@ -469,16 +469,19 @@ runs:
         new_manifest="$(mktemp)"
         (cd "${DIST_DIR}" && find . -type f | sed 's|^\./||') | LC_ALL=C sort > "${new_manifest}"
 
-        # Any failure here — a genuinely missing manifest (first publish) or
-        # anything else `gcloud` might refuse for — is treated the same way:
-        # an empty previous manifest, which prunes nothing this round. Failing
-        # toward "prune nothing" is the safe direction; failing toward
-        # "prune everything" is not.
+        # A missing manifest is a first publish and prunes nothing. Any other
+        # read failure — a denied grant above all — stops the job here, before
+        # anything is deleted, instead of silently reading an empty manifest.
         previous_manifest="$(mktemp)"
-        if gcloud storage cat --no-user-output-enabled "${manifest_key}" > "${previous_manifest}" 2>/dev/null; then
+        read_error="$(mktemp)"
+        if gcloud storage cat --no-user-output-enabled "${manifest_key}" > "${previous_manifest}" 2> "${read_error}"; then
             LC_ALL=C sort -o "${previous_manifest}" "${previous_manifest}"
-        else
+        elif grep -qiE 'matched no objects|not found|No URLs matched|404' "${read_error}"; then
             : > "${previous_manifest}"
+        else
+            echo "::error::could not read the publish manifest; check that the publisher's grant names <code>/.publish-manifest."
+            cat "${read_error}" >&2
+            exit 1
         fi
 
         stale="$(comm -23 "${previous_manifest}" "${new_manifest}")"

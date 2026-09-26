@@ -610,15 +610,17 @@ empty provider makes the publisher no-op for an unprovisioned or forked reposito
 
 The applications bucket is **shared**: every Project's portal lives in it under its own `<code>/portal/` prefix, and
 that prefix is derived by the action rather than enforced by Google. So the publisher's grant carries an IAM condition
-naming exactly one prefix — `cli/src/devx/gcp/app_publisher.rs`, `publisher_condition_expression`. Without it, any
-Project's CI could overwrite any other Project's portal, which is privileged client-facing work product Navigator serves
-same-origin.
+naming exactly one prefix, plus the one `<code>/.publish-manifest` object beside it that pruning reads and rewrites —
+`cli/src/devx/gcp/app_publisher.rs`, `publisher_condition_expression`. Without it, any Project's CI could overwrite any
+other Project's portal, which is privileged client-facing work product Navigator serves same-origin. The manifest sits
+outside `<code>/portal/` so the gateway can never serve it, which is why the condition names it exactly: a grant that
+covers only the prefix uploads the bundle and then fails every publish writing the manifest.
 
-The role bound under that condition is a custom one holding exactly `storage.objects.create`, `storage.objects.get` and
-`storage.objects.update`. No predefined role is create-and-update without delete: `objectCreator` is create-only, and
-`objectUser` and `objectAdmin` both carry delete. It deliberately excludes `storage.objects.list`, which is evaluated
-against the *bucket* — no object-name condition can scope it, and granting it would leak every other Project's object
-names. The publish does not need it, because it uploads with `cp`, which never lists.
+The role bound under that condition is a custom one holding exactly `storage.objects.create`, `storage.objects.get`,
+`storage.objects.update` and `storage.objects.delete`, the last so a publish can prune a key a later build dropped. It
+deliberately excludes `storage.objects.list`, which is evaluated against the *bucket* — no object-name condition can
+scope it, and granting it would leak every other Project's object names. The publish does not need it, because it
+uploads with `cp` and prunes from its own manifest, so it never lists.
 
 **A condition lives on a binding, and a binding names one role and one member set, so a publisher account can carry
 exactly one prefix.** One publisher identity per Project therefore follows from the shape rather than from preference: a

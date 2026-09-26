@@ -111,10 +111,15 @@ pub async fn project_notation_board(
             .await
             .map_err(|error| error.to_string())?;
         let Some(template) = template else { continue };
-        let markdown = store::templates::body(surreal, storage, &template)
-            .await
-            .map_err(|error| error.to_string())?;
-        let workflow_states = workflow_state_order(&markdown);
+        let workflow_states = match store::templates::body(surreal, storage, &template).await {
+            Ok(markdown) => workflow_state_order(&markdown),
+            // Template registrations can exist before their source body is
+            // attached. Keep the matter board readable while the workflow
+            // definition is incomplete; other storage and integrity errors
+            // still fail the read.
+            Err(store::templates::TemplateBodyError::MissingBody(_)) => Vec::new(),
+            Err(error) => return Err(error.to_string()),
+        };
         let events = store::notation_events::for_notation(surreal, notation.id)
             .await
             .map_err(|error| error.to_string())?;
@@ -159,6 +164,7 @@ pub async fn project_notation_board(
         }
         let workflow_states = match store::templates::body(surreal, storage, &template).await {
             Ok(markdown) => workflow_state_order(&markdown),
+            Err(store::templates::TemplateBodyError::MissingBody(_)) => Vec::new(),
             Err(error) => return Err(error.to_string()),
         };
         rows.push(ProjectNotationRow {
@@ -822,6 +828,8 @@ fn admin_testimonial_card(
             }
         }
     }
+}
+
 fn notation_columns(rows: &[ProjectNotationRow]) -> Vec<String> {
     let mut columns = Vec::new();
     for row in rows {
@@ -862,7 +870,6 @@ fn notation_state_cell(row: &ProjectNotationRow, state: &str) -> String {
         None => mark.to_string(),
     }
 }
-}
 
 /// The Project's workflow board: current runs beside templates not yet opened.
 #[component]
@@ -901,12 +908,6 @@ pub fn ProjectNotationBoard(rows: Vec<ProjectNotationRow>) -> Element {
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/// The lawyer matter-detail workbench, server-side rendered.
             }
         }
     }

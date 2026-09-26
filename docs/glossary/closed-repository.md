@@ -1,5 +1,6 @@
 ---
 title: "Closed Repository"
+description: "A Closed Repository is a ZIP archive of a Project's final working tree, filed when the repository is no longer needed."
 ---
 
 The [Asset](asset.md) kind `rules::kind::Kind::ClosedRepository` (`kind: closed_repository`) names: a zip of a closed

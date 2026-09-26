@@ -78,7 +78,7 @@ pub fn preamble() -> &'static str {
     body.split("\n## ").next().unwrap_or(body).trim()
 }
 
-/// Every authored term, alphabetical by slug.
+/// Every authored term, alphabetical by slug for stable reference output.
 ///
 /// # Panics
 ///
@@ -110,10 +110,9 @@ pub fn terms() -> &'static [Term] {
 /// The term a reader names — by title (any case) or by slug.
 #[must_use]
 pub fn find(needle: &str) -> Option<&'static Term> {
-    let slug = slugify(needle);
     terms()
         .iter()
-        .find(|term| term.title.eq_ignore_ascii_case(needle) || term.slug == slug)
+        .find(|term| term.title.eq_ignore_ascii_case(needle))
 }
 
 /// Why one glossary file could not be read as a term.
@@ -125,6 +124,12 @@ pub enum EntryError {
     /// The frontmatter has no usable `title:`.
     #[error("frontmatter has no `title:`")]
     NoTitle,
+    /// The frontmatter has no one-sentence plain-text `description:`.
+    #[error("frontmatter has no one-sentence plain-text `description:`")]
+    NoDescription,
+    /// The description contains more than one sentence or a Markdown link.
+    #[error("`description:` must be one plain sentence with no Markdown links")]
+    InvalidDescription,
     /// The file name is not the slug of its title, so the anchor a link
     /// uses and the file a reader opens would disagree.
     #[error("file name `{stem}.md` must be `{slug}.md`, the slug of its title")]
@@ -134,6 +139,7 @@ pub enum EntryError {
 #[derive(serde::Deserialize)]
 struct EntryFrontmatter {
     title: Option<String>,
+    description: Option<String>,
 }
 
 /// Parse one authored entry: `stem` is its file name without `.md`,
@@ -141,16 +147,25 @@ struct EntryFrontmatter {
 ///
 /// # Errors
 ///
-/// [`EntryError`] when the frontmatter is missing, has no title, or the
-/// file name is not the title's slug.
+/// [`EntryError`] when the frontmatter is missing, lacks a valid title or
+/// description, or the file name is not the title's slug.
 pub fn parse_entry(stem: &str, raw: &str) -> Result<Term, EntryError> {
     let (frontmatter, body) = rules::frontmatter::split(raw).ok_or(EntryError::NoFrontmatter)?;
-    let title = serde_yaml::from_str::<EntryFrontmatter>(frontmatter)
-        .ok()
-        .and_then(|fm| fm.title)
+    let fm =
+        serde_yaml::from_str::<EntryFrontmatter>(frontmatter).map_err(|_| EntryError::NoTitle)?;
+    let title = fm
+        .title
         .map(|title| title.trim().to_string())
         .filter(|title| !title.is_empty())
         .ok_or(EntryError::NoTitle)?;
+    let description = fm
+        .description
+        .map(|description| description.trim().to_string())
+        .filter(|description| !description.is_empty())
+        .ok_or(EntryError::NoDescription)?;
+    if !valid_description(&description) {
+        return Err(EntryError::InvalidDescription);
+    }
     let slug = slugify(&title);
     if slug != stem {
         return Err(EntryError::MisnamedFile {
@@ -161,7 +176,21 @@ pub fn parse_entry(stem: &str, raw: &str) -> Result<Term, EntryError> {
     Ok(Term {
         slug,
         title,
+        description,
         body: body.trim().to_string(),
+    })
+}
+
+fn valid_description(description: &str) -> bool {
+    if description.contains("\n") || description.contains("](") || !description.ends_with('.') {
+        return false;
+    }
+    !description.char_indices().any(|(index, ch)| {
+        matches!(ch, '.' | '!' | '?')
+            && description[index + ch.len_utf8()..]
+                .strip_prefix(' ')
+                .and_then(|tail| tail.chars().next())
+                .is_some_and(char::is_uppercase)
     })
 }
 
@@ -231,6 +260,8 @@ pub struct Term {
     pub slug: String,
     /// The heading text (`Lawyer Review`).
     pub title: String,
+    /// The one-sentence plain-text summary shown by the CLI and glossary page.
+    pub description: String,
     /// The Markdown body beneath the heading.
     pub body: String,
 }
@@ -446,7 +477,8 @@ pub async fn all(db: &SurrealDb) -> Result<Vec<GlossaryTerm>, GlossaryError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        find, parse_entry, preamble, slugify, terms, EntryError, GLOSSARY, GLOSSARY_LABEL, README,
+        find, parse_entry, preamble, slugify, terms, valid_description, EntryError, GLOSSARY,
+        GLOSSARY_LABEL, README,
     };
 
     /// Every embedded entry file, as `(stem, raw)`, `README.md` excluded.
@@ -520,26 +552,57 @@ mod tests {
             Err(EntryError::NoTitle)
         );
         assert_eq!(
-            parse_entry("lawyer", "---\ntitle: Lawyer Review\n---\n\nBody.\n"),
+            parse_entry(
+                "lawyer",
+                "---\ntitle: Lawyer Review\ndescription: A lawyer reviews the work.\n---\n\nBody.\n",
+            ),
             Err(EntryError::MisnamedFile {
                 stem: "lawyer".to_string(),
                 slug: "lawyer-review".to_string()
             })
         );
-        let term = parse_entry("lawyer-review", "---\ntitle: Lawyer Review\n---\n\nBody.\n")
-            .expect("well-formed");
+        let term = parse_entry(
+            "lawyer-review",
+            "---\ntitle: Lawyer Review\ndescription: A lawyer reviews the work.\n---\n\nBody.\n",
+        )
+        .expect("well-formed");
         assert_eq!(term.title, "Lawyer Review");
+        assert_eq!(term.description, "A lawyer reviews the work.");
         assert_eq!(term.body, "Body.");
+        assert!(parse_entry("lawyer-review", "---\ntitle: Lawyer Review\n---\n\nBody.\n").is_err());
+        assert!(parse_entry(
+            "lawyer-review",
+            "---\ntitle: Lawyer Review\ndescription: \"First sentence. Second sentence.\"\n---\n\nBody.\n"
+        ).is_err());
+        assert!(parse_entry(
+            "lawyer-review",
+            "---\ntitle: Lawyer Review\ndescription: \"See [Matter](matter.md).\"\n---\n\nBody.\n"
+        )
+        .is_err());
     }
 
     #[test]
-    fn find_matches_a_title_or_a_slug() {
+    fn find_matches_a_title_but_not_its_slug() {
         assert_eq!(
             find("lawyer review").map(|t| t.slug.as_str()),
             Some("lawyer-review")
         );
-        assert_eq!(find("ctxrun").map(|t| t.title.as_str()), Some("`ctx.run`"));
+        assert_eq!(
+            find("`CTX.RUN`").map(|t| t.title.as_str()),
+            Some("`ctx.run`")
+        );
+        assert!(find("ctxrun").is_none());
         assert!(find("not a real term").is_none());
+    }
+
+    #[test]
+    fn every_term_has_a_plain_one_sentence_description() {
+        assert!(terms().iter().all(|term| {
+            valid_description(&term.description)
+                && !term.description.contains('[')
+                && !term.description.contains('`')
+                && !term.description.contains('*')
+        }));
     }
 
     #[test]

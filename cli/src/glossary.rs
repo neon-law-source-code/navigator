@@ -5,22 +5,42 @@
 //! publishes the same terms on one page at `/glossary`, so the CLI and the
 //! page read one source and cannot drift.
 
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use store::glossary::{link_target, terms, LinkTarget, Term, GLOSSARY_LABEL};
 
 use crate::palette;
 
-/// `navigator glossary list`: one `slug<TAB>title` line per term.
+/// `navigator glossary list`: one reader-facing title and summary per term.
 #[must_use]
 pub fn list() -> ExitCode {
-    for term in terms() {
-        println!("{slug}\t{title}", slug = term.slug, title = term.title);
+    let mut entries: Vec<_> = terms().iter().collect();
+    entries.sort_by(|a, b| a.title.cmp(&b.title));
+    if std::io::stdout().is_terminal() {
+        let title_width = entries
+            .iter()
+            .map(|term| term.title.chars().count())
+            .max()
+            .unwrap_or_default();
+        for term in entries {
+            let padding = " ".repeat(title_width.saturating_sub(term.title.chars().count()));
+            println!(
+                "{}{}  {}",
+                palette::header(&term.title),
+                padding,
+                term.description
+            );
+        }
+    } else {
+        for term in entries {
+            println!("{} — {}", term.title, term.description);
+        }
     }
     ExitCode::SUCCESS
 }
 
-/// `navigator glossary show <term>`: the one term a title or slug names.
+/// `navigator glossary show <term>`: the one term its title names.
 #[must_use]
 pub fn show(needle: &str) -> ExitCode {
     if let Some(term) = store::glossary::find(needle) {
@@ -31,7 +51,10 @@ pub fn show(needle: &str) -> ExitCode {
         // CLI's command enum as a secret (one variant is `Secrets`), and the
         // reader already has the term they typed on screen.
         eprintln!("navigator: glossary show: unknown term");
-        eprintln!("Run `navigator glossary list` to list every term.");
+        eprintln!(
+            "Run `navigator glossary list` to list every term, then \
+                  `navigator glossary show \"<Term>\"` to read its definition."
+        );
         ExitCode::from(1)
     }
 }
@@ -80,6 +103,8 @@ fn notion_markdown(preamble: &str, terms: &[Term]) -> String {
     for term in terms {
         page.push_str("## ");
         page.push_str(&term.title);
+        page.push_str("\n\n");
+        page.push_str(term.description.trim());
         page.push_str("\n\n");
         page.push_str(term.body.trim());
         page.push_str("\n\n");

@@ -1,5 +1,6 @@
 ---
 title: "Brand"
+description: "A Brand is a registered house identity with its own branding configuration."
 ---
 
 A closed key naming a house brand — [`views::brand::BrandKey`](../../views/src/brand.rs): (`neon`, `delete-your-data`,

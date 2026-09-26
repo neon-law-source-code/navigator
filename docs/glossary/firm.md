@@ -1,5 +1,6 @@
 ---
 title: "Firm"
+description: "A Firm is an owning legal practice."
 ---
 
 An owning practice. The `firm` table is the tenancy boundary for [Projects](project.md) and for the people who work

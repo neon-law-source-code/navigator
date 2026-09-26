@@ -1,5 +1,6 @@
 ---
 title: "Restate context (`ctx`)"
+description: "Restate context is the handle the runtime passes into every handler invocation."
 ---
 
 The handle Restate passes into every handler invocation. Carries the durable **journal** for this invocation, the

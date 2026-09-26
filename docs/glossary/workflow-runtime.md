@@ -1,5 +1,6 @@
 ---
 title: "Workflow Runtime"
+description: "The Workflow Runtime is the trait abstraction over Navigator’s durable executor."
 ---
 
 The trait abstraction over the durable executor — [`workflows::StateMachineRuntime`](../../workflows/src/runtime.rs).

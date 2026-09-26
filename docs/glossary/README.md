@@ -13,6 +13,8 @@ says it, the file name is the stable reference key, and the body is the definiti
 page at `/glossary`, anchored at `#<slug>`, and the CLI reads the same files through `navigator glossary list` and
 `navigator glossary show <term>`.
 
-To add a term, create `<slug>.md` whose name is the slug of its `title:` (`Lawyer Review` → `lawyer-review.md`), link
-other entries as siblings (`[Matter](matter.md)`). When a table matters to a definition, link to its `DEFINE TABLE`
-statement in `store/src/schema/navigator.surql` instead of copying the schema into the glossary.
+To add a term, create `<slug>.md` whose name is the slug of its `title:` (`Lawyer Review` → `lawyer-review.md`). Its
+frontmatter requires a `description:` with one plain-text sentence ending in a period and no Markdown links. The CLI
+lists the title and description; `show` accepts the quoted title, regardless of case. Link other entries as siblings
+(`[Matter](matter.md)`). When a table matters to a definition, link to its `DEFINE TABLE` statement in
+`store/src/schema/navigator.surql` instead of copying the schema into the glossary.

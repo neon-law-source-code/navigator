@@ -1,5 +1,6 @@
 ---
 title: "Project"
+description: "A Project is what clients call a Matter."
 ---
 
 A **[Matter](matter.md)** in client English. The durable container every [Notation](../notation.md#notation) lives in.

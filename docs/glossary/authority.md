@@ -1,5 +1,6 @@
 ---
 title: "Authority"
+description: "An Authority is a case, statute, regulation, administrative proceeding, or secondary source held as global reference data."
 ---
 
 One case, statute, regulation, administrative proceeding, or secondary source, as **global reference data**. An

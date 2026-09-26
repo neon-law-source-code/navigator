@@ -1,5 +1,6 @@
 ---
 title: "Gate"
+description: "The project gate checks a repository's Markdown, YAML, and seed documents against Navigator's rules."
 ---
 
 `navigator project gate`, the command that checks one recognised repository — its authored Markdown, YAML, and seed

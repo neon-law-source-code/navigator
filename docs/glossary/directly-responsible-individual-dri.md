@@ -1,5 +1,6 @@
 ---
 title: "Directly Responsible Individual (DRI)"
+description: "\"DRI\" names two distinct accountability markers, one per domain, and neither implies the other."
 ---
 
 "DRI" names two distinct accountability markers, one per domain, and neither implies the other:

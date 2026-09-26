@@ -1,5 +1,6 @@
 ---
 title: "Verification"
+description: "A Verification records evidence that a licensed human checked a citation before filing."
 ---
 
 Evidence that a licensed human checked a citation before it was filed. A **domain record with an audit trail, not

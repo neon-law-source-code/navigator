@@ -1,5 +1,6 @@
 ---
 title: "Transcript Segment"
+description: "A Transcript Segment is one append-only chunk of text captured during a Live Inquiry Session."
 ---
 
 One append-only chunk of text captured during a [Live Inquiry Session](live-inquiry-session.md). A segment may carry a

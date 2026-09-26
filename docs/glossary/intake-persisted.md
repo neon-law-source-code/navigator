@@ -1,5 +1,8 @@
 ---
 title: "Intake Persisted"
+description: >-
+  The workflow prefix intake_persisted is a system wait state after questionnaire answers have been
+  written and before post-intake workflow work begins.
 ---
 
 The workflow prefix `intake_persisted` is a system wait state after questionnaire answers have been written and before

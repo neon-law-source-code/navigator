@@ -1,5 +1,6 @@
 ---
 title: "Sample Matter Fixture"
+description: "A Sample Matter Fixture is one of the three synthetic matters applied alongside the canonical seed."
 ---
 
 The three synthetic matters a boot applies on top of the canonical seed wherever `NAVIGATOR_SIMULATED_MATTERS` resolves

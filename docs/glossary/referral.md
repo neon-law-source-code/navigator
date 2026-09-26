@@ -1,5 +1,6 @@
 ---
 title: "Referral"
+description: "A Referral is a Matter the firm hears but does not take, instead handing it to suitable outside counsel."
 ---
 
 A [Matter](matter.md) the firm hears out but does not take on, handed instead to outside counsel whose practice fits it.

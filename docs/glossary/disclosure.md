@@ -1,5 +1,6 @@
 ---
 title: "Disclosure"
+description: "A Disclosure records a conflict or related-party fact attached to an Entity or Project."
 ---
 
 A formal disclosure attached to an Entity or a Project (conflicts, related-party, etc.). A `conflict` / `related_party`

@@ -1,5 +1,6 @@
 ---
 title: "E-Filing"
+description: "The workflow prefix e_filing records an electronic government filing."
 ---
 
 The workflow prefix `e_filing` records an electronic government filing. It is an outbound submission step and must sit

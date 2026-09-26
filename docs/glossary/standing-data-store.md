@@ -1,5 +1,6 @@
 ---
 title: "Standing Data Store"
+description: "The Standing Data Store is where Navigator’s rows live."
 ---
 
 Where Navigator's rows live. SurrealDB holds every table (#1093). Its connection contract is

@@ -1,5 +1,6 @@
 ---
 title: "Signature Block"
+description: "A Signature Block is a Template placeholder that becomes an e-signature field on a rendered document."
 ---
 
 A `{{ signer.field }}` placeholder in a Template body that becomes an e-signature field on the rendered document. The

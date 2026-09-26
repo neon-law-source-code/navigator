@@ -1,5 +1,6 @@
 ---
 title: "Entity"
+description: "An Entity is a legal organization such as an LLC, trust, corporation, or foundation."
 ---
 
 A legal organization — an LLC, trust, corporation, foundation, etc. Has a name, an [Entity Type](entity-type.md), and a

@@ -1,5 +1,6 @@
 ---
 title: "Question Type"
+description: "A Question Type names the value type used by a questionnaire State."
 ---
 
 The `<type>` half of a questionnaire [State](state.md) name (`<type>__<role>`) — a closed set defined by

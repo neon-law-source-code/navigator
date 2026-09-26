@@ -1,5 +1,6 @@
 ---
 title: "Mailroom Send"
+description: "The workflow prefix mailroom_send records lawyer sending physical mail."
 ---
 
 The workflow prefix `mailroom_send` records lawyer sending physical mail. See

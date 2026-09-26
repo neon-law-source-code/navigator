@@ -1,5 +1,6 @@
 ---
 title: "Workflow Spec"
+description: "A Workflow Spec is the parsed workflow graph from a Template, with required BEGIN and END states."
 ---
 
 The parsed form of a Template's `workflow:` block — a set of named States, transitions keyed by event, with `BEGIN` and

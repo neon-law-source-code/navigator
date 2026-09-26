@@ -1,5 +1,6 @@
 ---
 title: "Harvard Outline"
+description: "A Harvard Outline numbers motion and contract provisions so each can be addressed by path."
 ---
 
 The numbering used on motions and contracts so a provision is addressable by path (`I`, `I.A`, `1.B`). Depth-1 headings

@@ -1,5 +1,6 @@
 ---
 title: "Template"
+description: "A Template is the authored Markdown file that supplies a Notation’s metadata, questionnaire, workflow, and body."
 ---
 
 The authored Markdown file under `templates/` that a Notation is created from — the firm's drafted text together with

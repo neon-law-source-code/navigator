@@ -1,5 +1,8 @@
 ---
 title: "Sent for Signature"
+description: >-
+  The workflow prefix sent_for_signature is a system wait state for an outbound e-signature request; a
+  provider webhook or equivalent signal advances it.
 ---
 
 The workflow prefix `sent_for_signature` is a system wait state for an outbound e-signature request; a provider webhook

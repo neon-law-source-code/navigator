@@ -1,5 +1,6 @@
 ---
 title: "Credential"
+description: "A Credential records a Person’s licensure in a Jurisdiction."
 ---
 
 A Person's licensure in a Jurisdiction — pairs a Person with a Jurisdiction and a state-issued `license_number`. The

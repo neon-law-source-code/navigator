@@ -1,5 +1,6 @@
 ---
 title: "Durable execution"
+description: "Durable execution is the property the Workflow Runtime gives the application."
 ---
 
 The property the [Workflow Runtime](workflow-runtime.md) gives the application. Once a Notation has emitted a signal

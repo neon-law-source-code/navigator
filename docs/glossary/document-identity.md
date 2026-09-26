@@ -1,5 +1,6 @@
 ---
 title: "Document Identity"
+description: "Document Identity is the (project_id, slug) pair that names a living document in the asset lane."
 ---
 
 The `(project_id, slug)` pair naming a **living document** in the asset lane — the thing a re-upload updates rather than

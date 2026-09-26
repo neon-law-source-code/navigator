@@ -1,5 +1,6 @@
 ---
 title: "Module"
+description: "A Module is a per-matter capability enabled by lawyers on a Project."
 ---
 
 A per-matter **capability**, enabled by lawyers on a Project. Every Project opens as a blank slate; practice-area

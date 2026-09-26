@@ -1,5 +1,6 @@
 ---
 title: "Relationship Edge"
+description: "A Relationship Edge is a typed graph connection between a Person or Entity on each end."
 ---
 
 A typed graph edge with a [Person](person.md) or [Entity](entity.md) on **each** end — the canonical two-sided

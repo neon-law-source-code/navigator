@@ -1,5 +1,6 @@
 ---
 title: "Notation Event"
+description: "A Notation Event is one immutable journal row for a Notation's state machine."
 ---
 
 One immutable journal row for a [Notation](../notation.md#notation)'s state machine. Each row records the fact that a

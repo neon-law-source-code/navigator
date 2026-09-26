@@ -1,5 +1,6 @@
 ---
 title: "Relationship Log"
+description: "A Relationship Log is an append-only audit trail of relationship changes."
 ---
 
 Append-only audit trail of relationship changes — entries like `person joined entity` or `project closed`. The source of

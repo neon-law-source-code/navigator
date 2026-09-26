@@ -1,5 +1,6 @@
 ---
 title: "Neon Law Navigator"
+description: "Neon Law Navigator is the umbrella name for this monorepo and the products it contains."
 ---
 
 Short for **Neon Law Navigator** — the umbrella over this monorepo: the CLI (`navigator`), the one website (`neon` /

@@ -1,5 +1,6 @@
 ---
 title: "Lead"
+description: "A Lead is a public request for contact."
 ---
 
 A public request for contact. Capture writes a `lead` row: mailbox, optional phone, brand, source path, consent, status,

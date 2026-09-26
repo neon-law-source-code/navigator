@@ -1,5 +1,6 @@
 ---
 title: "Notarization"
+description: "The workflow prefix notarization records a respondent signing or refusing in front of a notary."
 ---
 
 The workflow prefix `notarization` records a respondent signing or refusing in front of a notary. See

@@ -1,5 +1,6 @@
 ---
 title: "Asset"
+description: "An Asset is one row in the assets table that stores a pointer to a static byte artifact."
 ---
 
 One row in the `assets` table: the canonical store for a static byte artifact. It holds the byte pointer (content type,

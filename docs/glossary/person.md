@@ -1,5 +1,6 @@
 ---
 title: "Person"
+description: "A Person is a human contact."
 ---
 
 A human contact. The system-wide tier — `owner`, `admin`, `lawyer`, `clerk`, or `client` — lives on this row in the

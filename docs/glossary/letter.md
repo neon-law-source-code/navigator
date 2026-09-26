@@ -1,5 +1,6 @@
 ---
 title: "Letter"
+description: "A Letter is one physical piece of mail, incoming or outgoing, scoped to a Mailroom."
 ---
 
 One physical piece of mail, incoming or outgoing, scoped to a Mailroom.

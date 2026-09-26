@@ -1,5 +1,6 @@
 ---
 title: "Deadline"
+description: "A Deadline is a forward-dated obligation on a Project, such as a pleading or filing due date."
 ---
 
 A forward-dated obligation on a [Project](project.md) — a pleading due, a filing due, a statutory window closing. This

@@ -1,5 +1,6 @@
 ---
 title: "Person–Project Role"
+description: "A Person–Project Role records a Person's participation on a Project."
 ---
 
 A Person's participation on a Project. The `participation` column records which side of the matter they are on, and it

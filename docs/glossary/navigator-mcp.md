@@ -1,5 +1,6 @@
 ---
 title: "Navigator MCP"
+description: "Navigator MCP is the workspace's agent surface."
 ---
 
 The workspace's **agent surface**. Navigator MCP exposes one tool catalog through two protocol surfaces — A2A and MCP —

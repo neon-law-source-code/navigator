@@ -1,5 +1,6 @@
 ---
 title: "Engagement / Retainer"
+description: "Engagement / Retainer is the client-English synonym for a Notation bound to a Project."
 ---
 
 Client-English synonym for **[Notation](../notation.md#notation) bound to a Project**. An Engagement is what the firm

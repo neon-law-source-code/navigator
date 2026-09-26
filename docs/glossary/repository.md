@@ -1,5 +1,6 @@
 ---
 title: "Repository"
+description: "A Repository is a provenance record for an external Git source used by a Notation."
 ---
 
 A provenance record for an external git repository that notation content came from. The `git_repositories` row holds a

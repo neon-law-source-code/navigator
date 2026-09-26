@@ -1,5 +1,6 @@
 ---
 title: "Certified Mail"
+description: "The workflow prefix certified_mail records a lawyer-driven outbound certified-mail submission."
 ---
 
 The workflow prefix `certified_mail` records a lawyer-driven outbound certified-mail submission. It is an outbound

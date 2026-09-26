@@ -1,5 +1,6 @@
 ---
 title: "External System Identity"
+description: "An External System Identity connects a Person to their identifier in a third-party system."
 ---
 
 The identifier a third-party system issues for a [Person](person.md) — a GitHub numeric id, a Slack `U…`, a Google

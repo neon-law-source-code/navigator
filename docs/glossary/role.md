@@ -1,5 +1,6 @@
 ---
 title: "Role"
+description: "A Role is the system-wide authorization tier a Person carries in person.role."
 ---
 
 The **system-wide authorization tier** a [Person](person.md) carries in `person.role`. There are exactly five tiers and

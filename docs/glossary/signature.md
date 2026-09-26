@@ -1,5 +1,8 @@
 ---
 title: "Signature"
+description: >-
+  The workflow suffix family _signature / _signatures, plus the witnesses prefix, records
+  respondent-side signing.
 ---
 
 The workflow suffix family `_signature` / `_signatures`, plus the `witnesses` prefix, records respondent-side signing.

@@ -1,5 +1,8 @@
 ---
 title: "Docket Entry"
+description: >-
+  One typed, numbered entry on a litigation case's docket — the court's own record of what was filed
+  or served.
 ---
 
 One typed, numbered entry on a litigation case's docket — the court's own record of what was filed or served. The

@@ -1,5 +1,6 @@
 ---
 title: "Document"
+description: "A Document is a Project-scoped Asset with searchable metadata and a content-addressed byte pointer."
 ---
 
 A matter document — a project-scoped [Asset](asset.md) carrying the metadata callers see (`filename`, `kind`, `source`,

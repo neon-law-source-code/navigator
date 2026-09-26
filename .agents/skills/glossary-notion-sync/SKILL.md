@@ -11,7 +11,8 @@ description: >
 
 Two copies of one vocabulary, and they are not peers:
 
-- **[`docs/glossary/`](../../../docs/glossary/README.md) is the source of truth.** One file per term, reviewed in pull
+- **[`docs/glossary/`](../../../docs/glossary/README.md) is the source of truth.** One file per term, with a one-sentence
+  plain-text `description:` in frontmatter, reviewed in pull
   requests, embedded in the binary through `store::glossary::GLOSSARY`, materialized into `glossary_term` rows on every
   boot, published on one page at `/glossary`, and read by `navigator glossary list` / `navigator glossary show <term>`.
   A definition is not real until it lands here.
@@ -27,9 +28,9 @@ editing a copy that gets overwritten, has been misled by us.
 
 `store::glossary::terms` is the reader of record for both directions:
 
-- **Every `<slug>.md` beside the README is one term.** Its frontmatter carries `title:` (the term as a reader says it),
-  and its body is the definition. `store::glossary::parse_entry` refuses a file whose name is not the slug of its title,
-  so the file a reader opens and the anchor a link uses cannot disagree.
+- **Every `<slug>.md` beside the README is one term.** Its frontmatter carries `title:` (the term as a reader says it)
+  and a one-sentence plain-text `description:`; its body is the definition. `store::glossary::parse_entry` refuses a file
+  whose name is not the slug of its title, so the file a reader opens and the anchor a link uses cannot disagree.
 - **The slug is a public API.** `store::glossary::slugify` turns `Lawyer Review` into `lawyer-review`: the file name,
   the `/glossary#lawyer-review` anchor, and the `glossary_term.slug` row key. Places across `docs/*.md`,
   `store/src/projects.rs`, `mcp/src/tools/*.rs`, and `portal/src/api.rs` link `glossary/<slug>.md`. Renaming a term

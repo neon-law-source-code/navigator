@@ -1,5 +1,6 @@
 ---
 title: "Live Inquiry Session"
+description: "A Live Inquiry Session is a Project-scoped event where a developing transcript is evaluated against an Inquiry Set."
 ---
 
 One Project-scoped, transcript-bearing event — for example an estate sitting, deposition, witness interview, or client

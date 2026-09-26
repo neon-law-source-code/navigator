@@ -1,5 +1,6 @@
 ---
 title: "Filing"
+description: "The workflow prefix filing records a named government filing."
 ---
 
 The workflow prefix `filing` records a named government filing. It is an outbound submission step and must sit behind

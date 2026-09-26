@@ -1,5 +1,6 @@
 ---
 title: "Re-ask"
+description: "Re-ask returns a Notation to collect answers flagged by Lawyer Review before it returns to review."
 ---
 
 The workflow prefix `reask` (state `reask__client`) is where a [Lawyer Review](lawyer-review.md) that returned

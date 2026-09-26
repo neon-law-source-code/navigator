@@ -1,5 +1,6 @@
 ---
 title: "Firm Brand"
+description: "A Firm Brand links a Firm to the house-brand keys it can use."
 ---
 
 Which house-brand keys a [Firm](firm.md) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key`, and

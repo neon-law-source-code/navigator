@@ -1,5 +1,6 @@
 ---
 title: "Step"
+description: "A Step is a unit of work the runtime executes when entering a State."
 ---
 
 A unit of work executed by the runtime when entering a State. Each Step declares its [Actor Class](actor-class.md)

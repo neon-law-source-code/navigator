@@ -1,5 +1,6 @@
 ---
 title: "Statement of Legal Aid (SOLA)"
+description: "A Statement of Legal Aid is a certificate from a legal aid provider that a person qualifies for reduced-cost services."
 ---
 
 The eligibility artifact a legal aid provider issues for one client: a certificate that this person qualifies for

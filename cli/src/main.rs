@@ -1942,13 +1942,11 @@ enum FormsAction {
 
 #[derive(Subcommand)]
 enum GlossaryCmd {
-    /// List every term as its slug and title, alphabetical by slug. The
-    /// slug is the term's `/glossary#<slug>` anchor.
+    /// List every term by its title and one-sentence description.
     List,
-    /// Print one term's definition. Accepts the title in any case or its
-    /// slug.
+    /// Print one term's definition. Accepts its title in any case.
     Show {
-        /// Term title or slug, e.g. `"Lawyer Review"` or `lawyer-review`.
+        /// Term title, e.g. `"Lawyer Review"`.
         term: String,
     },
     /// Print the glossary as one Markdown page Notion can hold: every

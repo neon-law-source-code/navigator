@@ -1,5 +1,6 @@
 ---
 title: "Person–Firm Role"
+description: "A Person–Firm Role records a Person's membership at a Firm."
 ---
 
 A Person's membership at a [Firm](firm.md). Shaped like [Person–Project Role](personproject-role.md): `person_id`,

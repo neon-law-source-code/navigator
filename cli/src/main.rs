@@ -624,9 +624,14 @@ enum ProjectsCmd {
         #[arg(long)]
         ci: bool,
     },
-    /// Install, lint, typecheck, test, and build every application this
-    /// Project repository declares, one application at a time, stopping at
-    /// the first failure. A repository with none still passes.
+    /// Build the Project repository's portal application.
+    Portal {
+        /// Repository root holding the portal. Defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+    },
+    /// Deprecated alias for `portal`, retained for one release.
+    #[command(hide = true)]
     Build {
         /// Repository root holding the application(s). Defaults to the
         /// current directory.
@@ -2751,7 +2756,8 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             json,
         } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
         ProjectsCmd::Gate { ci, check, deep } => run_gate(ci, check, deep).await,
-        ProjectsCmd::Build { dir } => projects::build::run(&dir),
+        ProjectsCmd::Portal { dir } => projects::portal::run(&dir),
+        ProjectsCmd::Build { dir } => projects::portal::run_deprecated_build(&dir),
         ProjectsCmd::Applications { dir, manifest } => projects::applications::run(&dir, manifest),
         ProjectsCmd::Setup {
             project_code,

@@ -82,7 +82,7 @@ pub async fn seed(
 /// `navigator site import` with no `MODEL_NAME`/`SEED_FILE` — submit every
 /// supported seed document in `dir`, in [`store::seed::SeedModel::ALL`]
 /// order. A missing `dir` prints a notice and succeeds, the same convention
-/// `project build` uses for a repository with no application: the gate still
+/// `project portal` uses for a repository with no portal: the gate still
 /// passes, there is simply nothing to import.
 pub async fn seed_directory(
     credential: SeedCredential,
@@ -3718,7 +3718,7 @@ mod tests {
     }
 
     /// A repository with no `seeds/` directory succeeds without a login or a
-    /// network call — the same convention `project build` uses for a
+    /// network call — the same convention `project portal` uses for a
     /// repository with no application.
     #[tokio::test(flavor = "current_thread")]
     async fn seed_directory_succeeds_with_no_directory() {

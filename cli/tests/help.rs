@@ -197,21 +197,20 @@ fn site_sync_help_discloses_defaults_and_preserved_keys() {
 /// The retired `projects application` verb (singular, for registering one
 /// application name) is asserted gone rather than merely absent from this
 /// list: a Project has one portal, so there was no application name for an
-/// operator to register. `applications` (plural) is a different, later verb —
-/// ENG-674's read-only discovery query, listing what `build` finds rather
-/// than naming an application for the operator to create.
+/// operator to register. `applications` (plural) is ENG-674's read-only
+/// discovery query. `build` remains as a hidden one-release alias for `portal`.
 #[test]
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["project", "--help"])),
         vec![
             "applications",
-            "build",
             "close",
             "create",
             "doctor",
             "drift",
             "gate",
+            "portal",
             "setup",
             "skill",
             "sync",
@@ -223,6 +222,21 @@ fn projects_help_lists_the_project_workspace_verbs() {
     assert!(setup.contains("--json"));
     assert!(setup
         .contains("Complete an existing Project's Drive, repository, Slack, and Notion setup."));
+}
+
+#[test]
+fn hidden_project_build_alias_warns_during_the_transition() {
+    let root = tempfile::tempdir().expect("temporary Project repository");
+    let output = Command::cargo_bin("navigator")
+        .unwrap()
+        .args(["project", "build", "--dir"])
+        .arg(root.path())
+        .output()
+        .expect("run the legacy alias");
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("`project build` is deprecated; use `project portal`"));
 }
 
 /// Two commands are spelled `doctor` and they diagnose different things.

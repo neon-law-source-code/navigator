@@ -82,11 +82,9 @@ jobs:
         if: steps.application.outputs.manifest != ''
         with:
           package_json_file: ${{ steps.application.outputs.manifest }}
-      # Installs, lints, typechecks, tests, and builds every discovered
-      # application, one at a time, stopping at the first failure. A
-      # repository with none prints a notice and succeeds.
-      - name: navigator project build
-        run: navigator project build --dir .
+      # Installs, lints, and builds the one portal under portal/.
+      - name: navigator project portal
+        run: navigator project portal --dir .
       # No validate step here. `project-gate.yml` has already validated this
       # commit — `cd.yml` makes the gate a `needs:` of the publish job — and a
       # second pass pinned to a fixed release validates the repository with a

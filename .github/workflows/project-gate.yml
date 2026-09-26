@@ -71,8 +71,7 @@ jobs:
               echo "host=${host}"
           } >> "${GITHUB_OUTPUT}"
 
-  # Installs, lints, typechecks, tests, and builds every application this
-  # repository declares, then runs the one gate over the whole tree.
+  # Installs, lints, and builds the portal, then gates the whole repository.
   verify:
     needs: read-manifest
     permissions:
@@ -109,12 +108,9 @@ jobs:
         if: steps.application.outputs.manifest != ''
         with:
           package_json_file: ${{ steps.application.outputs.manifest }}
-      # Installs, lints, typechecks, tests, and builds every discovered
-      # application, one at a time, stopping at the first failure. A
-      # repository with none prints a notice and succeeds — the gate still
-      # passes, it simply has nothing to build.
-      - name: navigator project build
-        run: navigator project build --dir .
+      # Installs, lints, and builds the one portal under portal/.
+      - name: navigator project portal
+        run: navigator project portal --dir .
       # One gate over the whole repository: content rules, YAML, seeds,
       # locales, layout, mount, and — because this is the job that ran the
       # builds — the origin pass (`Y009`) reading each `dist/`. `--ci` writes

@@ -965,18 +965,15 @@ fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
         .stderr(str::contains("claim the same application route"));
 }
 
-/// ENG-674: `verify` no longer generates a per-application bash loop — it
-/// calls `navigator project build`, which discovers and builds every
-/// application itself. That call's own per-application, per-verb behavior
-/// (order, `pnpm` arguments, stopping at the first failure) is covered
-/// directly in `cli/src/projects/build.rs`'s unit tests; this just pins that
-/// `verify` invokes it rather than a shell loop.
+/// LAW-74: `verify` calls the portal-specific command. Its lifecycle
+/// (order, `pnpm` arguments, stopping at the first failure) is covered in
+/// `cli/src/projects/portal.rs`; this pins that `verify` invokes that command.
 #[test]
-fn the_verify_job_installs_lints_typechecks_tests_and_builds_through_the_cli() {
+fn the_verify_job_builds_the_portal_through_the_cli() {
     let source = project_gate_source();
     assert!(
-        source.contains("navigator project build --dir ."),
-        "verify must call the CLI's build verb"
+        source.contains("navigator project portal --dir ."),
+        "verify must call the CLI's portal verb"
     );
     for retired in [
         "Install application dependencies",

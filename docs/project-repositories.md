@@ -456,13 +456,12 @@ repository whose `ci.yml` runs its own steps (like Navigator's own) requires.
 The reusable gate workflow declares three feeder jobs — verify, documents, and seeds — for the Project check. A
 malformed manifest is reported against `navigator.yaml` and stops the template pass, so one bad map cannot produce
 misleading findings. Each feeder job runs unconditionally and no-ops over a half this repository does not carry.
-`verify` installs the CLI through `.github/actions/navigator-install`, then runs `navigator project build`, which
-discovers every application — the root portal during the transition, `apps/<app>/`, or a root Vite workspace — and
-installs, lints, and builds each one (`build` already runs `tsc -b`, so there is no separate typecheck step, and no
-per-repository test harness to keep green); a repository with none no-ops. It then runs `navigator project gate --ci`
-over the whole tree: the content rules, the layout, and — because this is the job that produced them — the origin pass
-reading each built `dist/`. One command, one job; on a push to `main` the same run also checks `navigator.yaml` against
-the live row.
+`verify` installs the CLI through `.github/actions/navigator-install`, then runs `navigator project portal --dir .`,
+which installs, lints, and builds the single portal under `portal/` (`build` already runs `tsc -b`, so there is no
+separate typecheck step, and no per-repository test harness to keep green); a repository with no portal no-ops. It then
+runs `navigator project gate --ci` over the whole tree: the content rules, the layout, and — because this is the job
+that produced it — the origin pass reading the portal's built `dist/`. One command, one job; on a push to `main` the
+same run also checks `navigator.yaml` against the live row.
 
 The `documents` job runs `navigator project gate --check --ci`. `--check` (LAW-62) runs only the live document check —
 comparing committed pointers with the live record — and none of `verify`'s offline passes, so `documents` never builds

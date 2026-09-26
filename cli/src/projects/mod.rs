@@ -13,7 +13,6 @@
 //! that work and the CLI only ever holds a bearer token.
 
 pub mod applications;
-pub mod build;
 pub mod cli_docs;
 pub mod doctor;
 pub mod document_check;
@@ -21,6 +20,7 @@ pub mod drift;
 pub mod gate;
 pub mod manifest;
 pub mod origin;
+pub mod portal;
 pub mod repository;
 pub mod setup;
 pub mod skill;

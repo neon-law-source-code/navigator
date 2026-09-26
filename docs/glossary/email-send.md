@@ -1,8 +1,8 @@
 ---
 title: "Email Send"
 description: >-
-  The workflow prefix email_send renders and sends a bundled outbound email template through the
-  configured email service.
+  The workflow prefix email_send renders and sends a bundled outbound email template through the configured email
+  service.
 ---
 
 The workflow prefix `email_send` renders and sends a bundled outbound email template through the configured email

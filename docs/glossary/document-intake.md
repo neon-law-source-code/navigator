@@ -1,8 +1,8 @@
 ---
 title: "Document Intake"
 description: >-
-  The workflow prefix document_intake files an inbound artifact, such as a transcript or executed PDF,
-  into the matter through the shared document-ingestion path.
+  The workflow prefix document_intake files an inbound artifact, such as a transcript or executed PDF, into the matter
+  through the shared document-ingestion path.
 ---
 
 The workflow prefix `document_intake` files an inbound artifact, such as a transcript or executed PDF, into the matter

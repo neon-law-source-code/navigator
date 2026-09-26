@@ -1,6 +1,8 @@
 ---
 title: "Jurisdiction"
-description: "A Jurisdiction is a US state, federal jurisdiction, or foreign jurisdiction used to organize an Entity or issue a Credential."
+description: >-
+  A Jurisdiction is a US state, federal jurisdiction, or foreign jurisdiction used to organize an Entity or issue a
+  Credential.
 ---
 
 A US state, federal jurisdiction, or foreign jurisdiction that an Entity can be organized under, or that a

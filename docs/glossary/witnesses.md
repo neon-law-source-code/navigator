@@ -1,8 +1,8 @@
 ---
 title: "Witnesses"
 description: >-
-  The workflow prefix witnesses records respondent-side witness signatures and resolves through the
-  same Signature step kind as _signature / _signatures.
+  The workflow prefix witnesses records respondent-side witness signatures and resolves through the same Signature step
+  kind as _signature / _signatures.
 ---
 
 The workflow prefix `witnesses` records respondent-side witness signatures and resolves through the same Signature step

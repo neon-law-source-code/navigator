@@ -1,6 +1,7 @@
 ---
 title: "Person–Entity Role"
-description: "A Person–Entity Role records a Person's place in an Entity, such as manager, member, beneficiary, or trustee."
+description: >-
+  A Person–Entity Role records a Person's place in an Entity, such as manager, member, beneficiary, or trustee.
 ---
 
 A Person's role within an Entity (e.g. `manager`, `member`, `beneficiary`, `trustee`). These are the structural ties the

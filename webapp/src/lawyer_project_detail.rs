@@ -1531,6 +1531,21 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_document_table_shows_the_empty_state_and_error_flash() {
+        let view = LawyerDetailView {
+            error: Some("The document could not be updated.".to_string()),
+            ..LawyerDetailView::default()
+        };
+        let html = dioxus_ssr::render_element(documents_table(&view));
+        assert!(html.contains("No documents yet."), "{html}");
+        assert!(
+            html.contains("The document could not be updated."),
+            "{html}"
+        );
+        assert!(html.contains(r#"role="alert""#), "{html}");
+    }
+
+    #[test]
     fn a_document_with_an_internal_operative_revision_reads_as_internal() {
         let html = render_documents(vec![LawyerDocRow {
             id: "00000000-0000-0000-0000-0000000000aa".to_string(),
@@ -1576,6 +1591,24 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "server")]
+    fn malformed_or_missing_workflow_frontmatter_has_no_state_columns() {
+        assert!(workflow_state_order("# No frontmatter\n").is_empty());
+        assert!(workflow_state_order("---\nworkflow: [\n---\n").is_empty());
+        assert!(workflow_state_order("---\nworkflow: not-a-map\n---\n").is_empty());
+        assert!(workflow_state_order("---\ntitle: Plain template\n---\n").is_empty());
+    }
+
+    #[test]
+    fn a_new_admin_testimonial_defaults_to_private_with_empty_fields() {
+        let html = dioxus_ssr::render_element(admin_testimonial_card("project", "TOK", None));
+        assert!(html.contains(r#"value="private" checked"#), "{html}");
+        assert!(html.contains(r#"name="quote""#), "{html}");
+        assert!(html.contains(r#"name="attribution""#), "{html}");
+        assert!(!html.contains(r#"value="public" checked"#), "{html}");
+    }
+
+    #[test]
     fn notation_board_shows_never_started_templates_and_live_run_metadata() {
         let live = ProjectNotationRow {
             template_code: "engagement".to_string(),
@@ -1608,6 +1641,16 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_notation_board_explains_that_no_templates_are_registered() {
+        let html = dioxus_ssr::render_element(rsx! { ProjectNotationBoard { rows: vec![] } });
+        assert!(
+            html.contains("No notation templates are registered on this project."),
+            "{html}"
+        );
+        assert!(!html.contains("Notation UUID"), "{html}");
+    }
+
+    #[test]
     fn notation_state_cells_distinguish_current_completed_and_unvisited_states() {
         let row = ProjectNotationRow {
             notation_id: Some("notation-uuid".to_string()),
@@ -1624,6 +1667,35 @@ mod tests {
         assert!(notation_state_cell(&row, "lawyer_review").starts_with("●"));
         assert_eq!(notation_state_cell(&row, "filed"), "·");
         assert_eq!(notation_state_cell(&row, "not_in_workflow"), "—");
+    }
+
+    #[test]
+    fn notation_state_cells_mark_never_started_and_unsuccessful_runs() {
+        let waiting = ProjectNotationRow {
+            workflow_states: vec!["BEGIN".to_string(), "filed".to_string()],
+            ..ProjectNotationRow::default()
+        };
+        assert_eq!(notation_state_cell(&waiting, "BEGIN"), "·");
+        assert_eq!(notation_state_cell(&waiting, "other"), "—");
+
+        let completed = ProjectNotationRow {
+            notation_id: Some("notation-uuid".to_string()),
+            workflow_states: vec!["declined".to_string(), "failed".to_string()],
+            state_entered_at: [
+                ("declined".to_string(), "2026-09-25T15:00:00Z".to_string()),
+                ("failed".to_string(), "2026-09-25T16:00:00Z".to_string()),
+            ]
+            .into(),
+            ..ProjectNotationRow::default()
+        };
+        assert_eq!(
+            notation_state_cell(&completed, "declined"),
+            "✗ 2026-09-25T15:00:00Z"
+        );
+        assert_eq!(
+            notation_state_cell(&completed, "failed"),
+            "✗ 2026-09-25T16:00:00Z"
+        );
     }
 
     #[test]

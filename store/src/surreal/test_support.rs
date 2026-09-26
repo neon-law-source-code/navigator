@@ -48,31 +48,61 @@ pub async fn mem() -> SurrealDb {
     db
 }
 
-/// Register every compiled house-brand key as a system-wide `brand` row
-/// — the same state `store::seed::seed_brands` reaches in a real deployment
-/// before any traffic ever arrives (ENG-587: `store::projects::create` and
+/// A firm id no real `firm` row ever resolves to — mirrors the reasoning
+/// behind [`crate::test_support::SEED_ENTITY_JURISDICTION_ID`]: a
+/// `record<firm>` link is a type constraint, not a foreign key, so a raw
+/// write naming this id satisfies the schema without minting a real Firm
+/// (and the Entity and Admin DRI Person a real one would need), which would
+/// otherwise pollute every other test's own listing or counting assertions
+/// over those shared tables.
+const COMPILED_BRAND_FIXTURE_FIRM_ID: uuid::Uuid =
+    uuid::Uuid::from_u128(0x0199_0000_0000_7000_8000_0000_0000_0090);
+
+/// Register every compiled house-brand key as a `brand` row — the same
+/// state `store::seed::seed_practice` reaches in a real deployment before
+/// any traffic ever arrives (ENG-587: `store::projects::create` and
 /// `open_matter` validate `brand` against live rows, not a compiled closed
 /// list, so a test engine that never reaches this state could not open a
 /// matter under any compiled key, unlike a real deployment).
+///
+/// ENG-659 made `firm_id` required, but a raw write here — rather than the
+/// authorized `store::brands::create` — is deliberate: this fixture must
+/// stay a pure `brand`-table seed, exactly as it was before every row
+/// needed a Firm. Going through `create` would mean minting a real Firm (and
+/// the Entity and Person it needs), and every one of those rows would then
+/// show up in any other test's own unscoped listing or count over the
+/// `entity`/`person`/`firm` tables. [`COMPILED_BRAND_FIXTURE_FIRM_ID`] is
+/// never a real Firm, so a test's own `practice()`-style Firm still attaches
+/// any of these keys through `firm_brand` exactly as before — that relation
+/// carries no constraint back to `brand.firm_id`.
+///
 /// A test that needs to observe an empty `brand` table uses [`unmigrated`]
 /// directly instead of [`mem`].
 async fn seed_compiled_brands(db: &SurrealDb) {
+    let now = chrono::Utc::now().to_rfc3339();
     for key in crate::firms::CLOSED_BRAND_KEYS {
-        match crate::brands::create(
-            db,
-            crate::persons::Role::Owner,
-            None,
-            &crate::brands::NewBrand {
-                name: (*key).to_string(),
-                key: (*key).to_string(),
-                ..Default::default()
-            },
+        // An explicit UUID id, minted exactly like every other writer in
+        // this crate (`record_id(TABLE, Uuid::now_v7())`) rather than
+        // SurrealDB's own auto-generated key: `store::surreal::record_uuid`
+        // parses a record's id as a UUID, and every reader of this table —
+        // `store::brands::find_by_key` included — silently drops a row
+        // whose id does not parse, which would make this fixture invisible
+        // to the very code it exists to satisfy.
+        db.query(
+            "CREATE $id SET name = $name, brand_key = $key, firm_id = $firm_id, \
+             inserted_at = $now, updated_at = $now",
         )
+        .bind(("id", crate::surreal::record_id("brand", uuid::Uuid::now_v7())))
+        .bind(("name", (*key).to_string()))
+        .bind(("key", (*key).to_string()))
+        .bind((
+            "firm_id",
+            crate::surreal::record_id("firm", COMPILED_BRAND_FIXTURE_FIRM_ID),
+        ))
+        .bind(("now", now.clone()))
         .await
-        {
-            Ok(_) => {}
-            Err(error) => panic!("seed the compiled brand {key} for a test engine: {error}"),
-        }
+        .and_then(surrealdb::IndexedResults::check)
+        .unwrap_or_else(|error| panic!("seed the compiled brand {key} for a test engine: {error}"));
     }
 }
 

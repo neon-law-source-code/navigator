@@ -1,4 +1,4 @@
-//! Data-driven brand rows (ENG-496).
+//! Data-driven brand rows (ENG-496, ENG-659).
 //!
 //! A [`Brand`] is a name a practice presents under, distinct from the
 //! compiled [`views::brand::BrandKey`] registry `store` cannot depend on:
@@ -6,16 +6,25 @@
 //! the compiled `Branding` copy — nothing here replaces it, and no runtime
 //! brand row publishes a host or a marketing page in this cut. This table
 //! is the authorization and identity record CRUD acts on: who may create a
-//! brand, what it is named, and which Firm (if any) it belongs to.
+//! brand, what it is named, and which Firm it belongs to.
 //!
-//! `firm_id: None` means system-wide — visible to every Firm, created only
-//! by Owner. A live `firm_id` means Firm-scoped — created only by that
-//! Firm's Admin DRI (`person_firm_role.is_dri`, ENG-499), who cannot also
-//! create a system-wide brand through this same command. `is_law_firm` and
-//! `legal_entity` are Owner's own call for a system-wide brand; a
-//! Firm-scoped brand does not take them as input at all — it always
-//! inherits `is_law_firm = true` and its Firm's own Entity name, because a
-//! Firm-scoped brand presents that Firm's own practice.
+//! Every brand row is Firm-scoped (ENG-659): `firm_id` is required, and
+//! [`create`] refuses `firm_id: None` before anything else, for every actor
+//! including Owner. Only a Firm's own Admin DRI (`person_firm_role.is_dri`,
+//! ENG-499) may create that Firm's brand. `is_law_firm` and `legal_entity`
+//! are not caller input at all — a Firm-scoped brand always inherits
+//! `is_law_firm = true` and its Firm's own Entity name, because a
+//! Firm-scoped brand presents that Firm's own practice. Owner still governs
+//! *existing* brands on every Firm ([`authorize_existing`]/[`update`]) — the
+//! restriction is on creating a new row, not on editing one.
+//!
+//! A `firm_id IS NONE` row is a historical fact only: every compiled house
+//! brand used to migrate into the table this way, before ENG-659's schema
+//! migration backfilled each one onto the Firm that wears it
+//! (`store::schema::backfill_brand_firm_id`) and tightened the column to a
+//! required `record<firm>`. [`system_wide`] and [`all_firm_scoped`] stay
+//! read-only historical-compatibility helpers; nothing can write a new
+//! `firm_id: None` row through this module.
 
 use serde::Serialize;
 use surrealdb::types::SurrealValue;
@@ -216,11 +225,10 @@ impl BrandRow {
     }
 }
 
-/// Inputs for creating a [`Brand`].
-///
-/// `is_law_firm` and `legal_entity` are honored only for a system-wide
-/// request (`firm_id: None`) — a Firm-scoped request always computes both
-/// from the target Firm and ignores whatever these fields carry.
+/// Inputs for creating a [`Brand`]. `firm_id` is required — [`create`]
+/// refuses `None` before anything else (ENG-659). `is_law_firm` and
+/// `legal_entity` are not caller input at all: every brand is always
+/// computed as `is_law_firm = true` with its target Firm's own Entity name.
 #[derive(Debug, Clone, Default)]
 pub struct NewBrand {
     pub name: String,
@@ -229,8 +237,6 @@ pub struct NewBrand {
     pub primary_color: Option<String>,
     pub accent_color: Option<String>,
     pub typeface: Option<String>,
-    pub is_law_firm: bool,
-    pub legal_entity: Option<String>,
 }
 
 /// A partial edit to a [`Brand`]'s presentation fields. Never touches
@@ -270,11 +276,15 @@ pub enum BrandError {
     DuplicateName,
     #[error("that brand key is already taken")]
     DuplicateKey,
-    /// Owner alone creates a system-wide brand; a Firm's Admin DRI alone
-    /// creates one scoped to their own Firm. Every other actor, and an
-    /// Admin DRI naming a different Firm, is refused this.
+    /// Only a Firm's own Admin DRI may create that Firm's brand. Every other
+    /// actor, and an Admin DRI naming a different Firm, is refused this.
     #[error("you may not create, edit, or delete this brand")]
     NotAuthorized,
+    /// [`create`] was called with `firm_id: None` (ENG-659). Every brand is
+    /// Firm-scoped now — there is no system-wide brand an actor, Owner
+    /// included, may create through this command.
+    #[error("a brand must belong to a Firm")]
+    FirmRequired,
     /// The proposed `primary_color` is not a well-formed `#rrggbb` hex.
     #[error("{0} is not a valid #rrggbb hex colour")]
     InvalidHex(String),
@@ -322,6 +332,7 @@ impl BrandError {
                 "That brand is still worn by a firm or named by a project.".to_string()
             }
             Self::NotAuthorized => "You may not create, edit, or delete this brand.".to_string(),
+            Self::FirmRequired => "A brand must belong to a Firm.".to_string(),
             Self::NoSuchBrand(_) => "That brand could not be found.".to_string(),
             Self::NoSuchFirm(_) => "That firm could not be found.".to_string(),
             Self::DuplicateName => "That brand name is already taken.".to_string(),
@@ -349,43 +360,30 @@ where
     retry::writing(attempt).await.map_err(classify_write)
 }
 
-/// Whether `actor` may create a brand at `target_firm_id` (`None` for
-/// system-wide).
+/// Whether `actor` may create a brand at `target_firm_id`.
 ///
-/// Side-effect-free. Owner passes only the system-wide case; a Firm's own
-/// Admin DRI passes only that Firm's case. Every other combination —
-/// including Owner attempting a Firm-scoped brand, or that Firm's non-DRI
-/// Admin — is refused.
+/// Side-effect-free. `target_firm_id: None` is refused outright with
+/// [`BrandError::FirmRequired`] before any role check — every brand is
+/// Firm-scoped (ENG-659), so there is no system-wide case left to authorize,
+/// Owner included. Only that Firm's own Admin DRI passes; every other
+/// combination, including that Firm's non-DRI Admin, is refused.
 async fn authorize(
     surreal: &SurrealDb,
-    actor_role: Role,
     actor_person_id: Option<Uuid>,
     target_firm_id: Option<Uuid>,
 ) -> Result<(), BrandError> {
-    match target_firm_id {
-        None => {
-            if actor_role == Role::Owner {
-                Ok(())
-            } else {
-                Err(BrandError::NotAuthorized)
-            }
-        }
-        Some(firm_id) => {
-            if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
-                return Err(BrandError::NoSuchFirm(firm_id));
-            }
-            let Some(person_id) = actor_person_id else {
-                return Err(BrandError::NotAuthorized);
-            };
-            match crate::firms::membership_for_person(surreal, person_id, firm_id).await? {
-                Some(row)
-                    if row.is_dri && row.membership == crate::firms::FirmMembership::Admin =>
-                {
-                    Ok(())
-                }
-                _ => Err(BrandError::NotAuthorized),
-            }
-        }
+    let Some(firm_id) = target_firm_id else {
+        return Err(BrandError::FirmRequired);
+    };
+    if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
+        return Err(BrandError::NoSuchFirm(firm_id));
+    }
+    let Some(person_id) = actor_person_id else {
+        return Err(BrandError::NotAuthorized);
+    };
+    match crate::firms::membership_for_person(surreal, person_id, firm_id).await? {
+        Some(row) if row.is_dri && row.membership == crate::firms::FirmMembership::Admin => Ok(()),
+        _ => Err(BrandError::NotAuthorized),
     }
 }
 
@@ -398,9 +396,9 @@ async fn authorize(
 /// can no longer drift; `resolve_quietly` is the non-emitting entry point
 /// because this is a defense-in-depth check behind a command
 /// [`find_by_key_for_actor`] already authorized once through the emitting
-/// [`crate::firm_capability::resolve`]. Creation remains stricter: only
-/// Owner may create a system-wide brand, and only the Firm's Admin DRI may
-/// create a Firm-scoped one.
+/// [`crate::firm_capability::resolve`]. The `None` arm below only ever
+/// matches a historical `firm_id IS NONE` row that predates ENG-659's
+/// backfill; [`create`] refuses to write a new one.
 async fn authorize_existing(
     surreal: &SurrealDb,
     actor_role: Role,
@@ -437,36 +435,45 @@ async fn authorize_existing(
     }
 }
 
-/// Create a brand. See the module doc for the authorization split and what
-/// a Firm-scoped request inherits.
+/// Create a brand. See the module doc for the authorization rule and what a
+/// Firm-scoped request inherits. `actor_role` is accepted for parity with
+/// every other command in this module even though [`authorize`] no longer
+/// branches on it — a Firm-scoped create is an Admin-DRI-only act now,
+/// whatever the caller's role.
 pub async fn create(
     surreal: &SurrealDb,
-    actor_role: Role,
+    _actor_role: Role,
     actor_person_id: Option<Uuid>,
     input: &NewBrand,
 ) -> Result<Brand, BrandError> {
-    authorize(surreal, actor_role, actor_person_id, input.firm_id).await?;
+    authorize(surreal, actor_person_id, input.firm_id).await?;
+    create_unchecked(surreal, input).await
+}
+
+/// The write half of [`create`], with no authorization check. Shared with
+/// [`seed_upsert`], the boot seed's trusted system path (ENG-659) — every
+/// caller-driven path goes through [`create`], which calls [`authorize`]
+/// first.
+async fn create_unchecked(surreal: &SurrealDb, input: &NewBrand) -> Result<Brand, BrandError> {
     if let Some(hex) = input.primary_color.as_deref() {
         validate_primary_hex(hex)?;
     }
 
-    let (is_law_firm, legal_entity) = match input.firm_id {
-        None => (input.is_law_firm, input.legal_entity.clone()),
-        Some(firm_id) => {
-            // `authorize` already proved this Firm exists.
-            let firm = crate::firms::find_by_id(surreal, firm_id)
-                .await?
-                .ok_or(BrandError::NoSuchFirm(firm_id))?;
-            let entity_name = match firm.entity_id {
-                Some(entity_id) => crate::entities::find_by_id(surreal, entity_id)
-                    .await
-                    .map_err(crate::firms::FirmError::from)?
-                    .map(|entity| entity.name),
-                None => None,
-            };
-            (true, entity_name)
-        }
+    // The caller already proved `input.firm_id` is `Some` and that Firm
+    // exists — a Firm-scoped brand always inherits `is_law_firm = true` and
+    // its Firm's own Entity name; neither is caller input.
+    let firm_id = input.firm_id.ok_or(BrandError::FirmRequired)?;
+    let firm = crate::firms::find_by_id(surreal, firm_id)
+        .await?
+        .ok_or(BrandError::NoSuchFirm(firm_id))?;
+    let legal_entity = match firm.entity_id {
+        Some(entity_id) => crate::entities::find_by_id(surreal, entity_id)
+            .await
+            .map_err(crate::firms::FirmError::from)?
+            .map(|entity| entity.name),
+        None => None,
     };
+    let is_law_firm = true;
 
     let id = Uuid::now_v7();
     let now = chrono::Utc::now().to_rfc3339();
@@ -493,6 +500,38 @@ pub async fn create(
     let row: Option<BrandRow> = response.take(0)?;
     row.and_then(BrandRow::into_brand)
         .ok_or(BrandError::WriteReturnedNothing)
+}
+
+/// System/seed-only: create `input`, or, if its name or key already exists,
+/// refresh only its `typeface` and `primary_color` — with no authorization
+/// check (ENG-659). This is the boot seed's own migration of each compiled
+/// house brand into a `brand` row scoped to the resolved practice Firm
+/// (`store::seed::seed_brands`); it must succeed even against a test engine
+/// where an unrelated fixture Firm already registered the same compiled keys
+/// (`store::surreal::test_support::mem`), which the authorized [`create`]/
+/// [`update`] pair would correctly refuse — this path is why the boot seed
+/// does not need to be that caller. Every human- or API-driven path still
+/// goes through the authorized [`create`]/[`update`].
+pub(crate) async fn seed_upsert(surreal: &SurrealDb, input: &NewBrand) -> Result<Brand, BrandError> {
+    match create_unchecked(surreal, input).await {
+        Ok(brand) => Ok(brand),
+        Err(BrandError::DuplicateName | BrandError::DuplicateKey) => {
+            let existing = find_by_key(surreal, &input.key)
+                .await?
+                .ok_or_else(|| BrandError::NoSuchBrand(Uuid::nil()))?;
+            update_unchecked(
+                surreal,
+                existing.id,
+                &BrandEdit {
+                    typeface: Some(input.typeface.clone()),
+                    primary_color: Some(input.primary_color.clone()),
+                    ..BrandEdit::default()
+                },
+            )
+            .await
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Find a brand by id.
@@ -638,6 +677,29 @@ pub async fn for_firm(surreal: &SurrealDb, firm_id: Uuid) -> Result<Vec<Brand>, 
     Ok(rows.into_iter().filter_map(BrandRow::into_brand).collect())
 }
 
+/// The distinct font family names this Firm has actually uploaded, across
+/// every brand row it owns — sorted and de-duplicated. This is the *only*
+/// source the Admin edit page's typeface `<select>` draws from (ENG-659):
+/// empty when the Firm has uploaded no font yet, so the compiled
+/// `views::brand_presentation::TYPEFACES` catalog never appears there. A row
+/// with `font_family` set but no `font_object_key` (named but never
+/// actually uploaded) is excluded — the option only ever names a real
+/// uploaded object.
+pub async fn uploaded_font_families_for_firm(
+    surreal: &SurrealDb,
+    firm_id: Uuid,
+) -> Result<Vec<String>, BrandError> {
+    let mut families: Vec<String> = for_firm(surreal, firm_id)
+        .await?
+        .into_iter()
+        .filter(|brand| brand.font_object_key.is_some())
+        .filter_map(|brand| brand.font_family)
+        .collect();
+    families.sort();
+    families.dedup();
+    Ok(families)
+}
+
 /// Edit a brand's presentation fields. Owner governs existing brands on every
 /// Firm; a Firm's own Admin DRI governs its Firm-scoped one.
 pub async fn update(
@@ -651,6 +713,21 @@ pub async fn update(
         .await?
         .ok_or(BrandError::NoSuchBrand(brand_id))?;
     authorize_existing(surreal, actor_role, actor_person_id, existing.firm_id).await?;
+    update_unchecked(surreal, brand_id, input).await
+}
+
+/// The write half of [`update`], with no authorization check. Shared with
+/// [`seed_upsert`]; see [`create_unchecked`] for why the boot seed needs
+/// this. `brand_id` must already have been resolved to an existing row by
+/// the caller.
+async fn update_unchecked(
+    surreal: &SurrealDb,
+    brand_id: Uuid,
+    input: &BrandEdit,
+) -> Result<Brand, BrandError> {
+    let existing = find_by_id(surreal, brand_id)
+        .await?
+        .ok_or(BrandError::NoSuchBrand(brand_id))?;
     if let Some(Some(hex)) = input.primary_color.as_ref() {
         validate_primary_hex(hex)?;
     }
@@ -868,33 +945,42 @@ mod tests {
         (firm, admin)
     }
 
+    /// ENG-659: every brand is Firm-scoped now. `create` refuses
+    /// `firm_id: None` before any role check, for every actor including
+    /// Owner — there is no system-wide brand left to create.
     #[tokio::test]
-    async fn owner_creates_a_system_wide_brand_visible_to_every_firm() {
+    async fn create_refuses_a_missing_firm_id_for_every_actor() {
         let db = mem_surreal().await;
-        let brand = create(
+        let (firm, admin) = practice(&db, "Any Practice").await;
+
+        let owner_err = create(
             &db,
             Role::Owner,
             None,
             &NewBrand {
                 name: "Acme Law".to_string(),
                 key: "acme-law".to_string(),
-                is_law_firm: true,
-                legal_entity: Some("Shook Law PLLC".to_string()),
                 ..NewBrand::default()
             },
         )
         .await
-        .unwrap();
-        assert_eq!(brand.firm_id, None);
-        assert!(brand.is_law_firm);
-        assert_eq!(brand.legal_entity.as_deref(), Some("Shook Law PLLC"));
+        .unwrap_err();
+        assert!(matches!(owner_err, BrandError::FirmRequired));
 
-        let (firm, _admin) = practice(&db, "Any Practice").await;
-        assert!(system_wide(&db)
-            .await
-            .unwrap()
-            .iter()
-            .any(|b| b.id == brand.id));
+        let admin_err = create(
+            &db,
+            Role::Admin,
+            Some(admin),
+            &NewBrand {
+                name: "Admin Attempt".to_string(),
+                key: "admin-attempt".to_string(),
+                ..NewBrand::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(admin_err, BrandError::FirmRequired));
+
         assert!(for_firm(&db, firm.id).await.unwrap().is_empty());
     }
 
@@ -920,9 +1006,6 @@ mod tests {
                 name: "Scoped Brand".to_string(),
                 key: "scoped-brand".to_string(),
                 firm_id: Some(firm.id),
-                // Submitted but must be ignored/overridden for a Firm-scoped brand.
-                is_law_firm: false,
-                legal_entity: Some("Someone Else PLLC".to_string()),
                 ..NewBrand::default()
             },
         )
@@ -973,7 +1056,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(matches!(err, BrandError::NotAuthorized));
+        assert!(matches!(err, BrandError::FirmRequired));
 
         let err = create(
             &db,
@@ -1030,6 +1113,7 @@ mod tests {
                 &NewBrand {
                     name: format!("{role:?} Attempt"),
                     key: format!("{role:?}-attempt").to_lowercase(),
+                    firm_id: Some(firm_a.id),
                     ..NewBrand::default()
                 },
             )
@@ -1042,13 +1126,15 @@ mod tests {
     #[tokio::test]
     async fn name_and_key_are_each_globally_unique() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice(&db, "Uniqueness Practice").await;
         create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "First".to_string(),
                 key: "first".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1057,11 +1143,12 @@ mod tests {
 
         let duplicate_name = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "First".to_string(),
                 key: "second".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1071,11 +1158,12 @@ mod tests {
 
         let duplicate_key = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Second".to_string(),
                 key: "first".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1144,14 +1232,16 @@ mod tests {
     #[tokio::test]
     async fn create_and_update_validate_the_primary_hex() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice(&db, "Hex Practice").await;
 
         let err = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Malformed Hex".to_string(),
                 key: "malformed-hex".to_string(),
+                firm_id: Some(firm.id),
                 primary_color: Some("not-a-hex".to_string()),
                 ..NewBrand::default()
             },
@@ -1162,11 +1252,12 @@ mod tests {
 
         let brand = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Valid Hex".to_string(),
                 key: "valid-hex".to_string(),
+                firm_id: Some(firm.id),
                 primary_color: Some("#007c91".to_string()),
                 ..NewBrand::default()
             },
@@ -1177,8 +1268,8 @@ mod tests {
 
         let err = update(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             brand.id,
             &BrandEdit {
                 primary_color: Some(Some("#zzzzzz".to_string())),
@@ -1203,14 +1294,16 @@ mod tests {
     #[tokio::test]
     async fn create_and_update_refuse_a_pale_primary_that_would_clear_the_old_best_of_gate() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice(&db, "Contrast Practice").await;
         for (key, hex) in [("near-black", "#010101"), ("mid-gray", "#808080")] {
             let brand = create(
                 &db,
-                Role::Owner,
-                None,
+                Role::Admin,
+                Some(admin),
                 &NewBrand {
                     name: key.to_string(),
                     key: key.to_string(),
+                    firm_id: Some(firm.id),
                     primary_color: Some(hex.to_string()),
                     ..NewBrand::default()
                 },
@@ -1225,11 +1318,12 @@ mod tests {
         for (key, hex) in [("pale-yellow", "#f5f5a0"), ("near-white", "#fefefe")] {
             let err = create(
                 &db,
-                Role::Owner,
-                None,
+                Role::Admin,
+                Some(admin),
                 &NewBrand {
                     name: key.to_string(),
                     key: key.to_string(),
+                    firm_id: Some(firm.id),
                     primary_color: Some(hex.to_string()),
                     ..NewBrand::default()
                 },
@@ -1248,11 +1342,12 @@ mod tests {
         // `update` refuses the same pale primary on an already-created brand.
         let brand = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Editable".to_string(),
                 key: "editable-pale".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1260,8 +1355,8 @@ mod tests {
         .unwrap();
         let err = update(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             brand.id,
             &BrandEdit {
                 primary_color: Some(Some("#fefefe".to_string())),
@@ -1278,13 +1373,15 @@ mod tests {
     #[tokio::test]
     async fn set_font_validates_the_licence_and_stores_the_upload() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice(&db, "Fontable Practice").await;
         let brand = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Fontable".to_string(),
                 key: "fontable".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1323,18 +1420,108 @@ mod tests {
         assert_eq!(updated.font_licence.as_deref(), Some("OFL-1.1"));
     }
 
+    /// ENG-659: the Admin edit page's typeface select draws only from a
+    /// Firm's own uploaded fonts — empty before any upload, and it never
+    /// lists a compiled catalog id. A brand naming a `font_family` but
+    /// never actually uploading an object (no `font_object_key`) is
+    /// excluded, and another Firm's upload never leaks in.
+    #[tokio::test]
+    async fn uploaded_font_families_for_firm_lists_only_this_firm_s_real_uploads() {
+        let db = mem_surreal().await;
+        let (firm, admin) = practice(&db, "Font Roster Practice").await;
+        let (other_firm, other_admin) = practice(&db, "Other Font Practice").await;
+
+        let brand = create(
+            &db,
+            Role::Admin,
+            Some(admin),
+            &NewBrand {
+                name: "Font Roster Brand".to_string(),
+                key: "font-roster-brand".to_string(),
+                firm_id: Some(firm.id),
+                ..NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(uploaded_font_families_for_firm(&db, firm.id)
+            .await
+            .unwrap()
+            .is_empty());
+
+        // Named but never uploaded — `font_object_key` stays unset, so this
+        // must not appear as a selectable option.
+        update(
+            &db,
+            Role::Admin,
+            Some(admin),
+            brand.id,
+            &BrandEdit {
+                font_family: Some(Some("Named Only".to_string())),
+                ..BrandEdit::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(uploaded_font_families_for_firm(&db, firm.id)
+            .await
+            .unwrap()
+            .is_empty());
+
+        set_font(
+            &db,
+            Role::Admin,
+            Some(admin),
+            brand.id,
+            "Custom Sans",
+            "fonts/brands/font-roster-brand/abc123.woff2",
+            "OFL-1.1",
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            uploaded_font_families_for_firm(&db, firm.id).await.unwrap(),
+            vec!["Custom Sans".to_string()]
+        );
+
+        create(
+            &db,
+            Role::Admin,
+            Some(other_admin),
+            &NewBrand {
+                name: "Other Font Brand".to_string(),
+                key: "other-font-brand".to_string(),
+                firm_id: Some(other_firm.id),
+                ..NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(uploaded_font_families_for_firm(&db, other_firm.id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            uploaded_font_families_for_firm(&db, firm.id).await.unwrap(),
+            vec!["Custom Sans".to_string()],
+            "another Firm's upload must not leak in"
+        );
+    }
+
     /// ENG-586: `set_logo` is authorized exactly like `update`, and stores the
     /// object key and content type.
     #[tokio::test]
     async fn set_logo_stores_the_object_key_and_content_type() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice(&db, "Logoable Practice").await;
         let brand = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Logoable".to_string(),
                 key: "logoable".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1359,7 +1546,10 @@ mod tests {
     }
 
     /// ENG-586: the Owner-only inventory reads every Firm-scoped brand across
-    /// every Firm, distinct from `for_firm`'s single-Firm scope.
+    /// every Firm, distinct from `for_firm`'s single-Firm scope. Also covers
+    /// ENG-659's read-side tolerance: a historical `firm_id IS NONE` row (no
+    /// live path creates one any more) still surfaces in `system_wide` and
+    /// every actor's `visible_for_actor` view.
     #[tokio::test]
     async fn all_firm_scoped_spans_every_firm() {
         let db = mem_surreal().await;
@@ -1391,21 +1581,42 @@ mod tests {
         )
         .await
         .unwrap();
-        let system_wide_brand = create(
-            &db,
-            Role::Owner,
-            None,
-            &NewBrand {
-                name: "System Wide".to_string(),
-                key: "system-wide".to_string(),
-                ..NewBrand::default()
-            },
-        )
+        // ENG-659: there is no live path left to create a `firm_id: None`
+        // row, so a historical one is simulated with a raw write, exactly
+        // as a row a pre-ENG-659 build once created (and this build's
+        // schema backfill has not yet visited) would look on disk. The
+        // schema itself already tightened `firm_id` to a required
+        // `record<firm>` the moment `mem_surreal` applied it (there were no
+        // orphans yet to backfill), so this loosens it back open first —
+        // the same trick `store::schema::mod::tests::historical_orphan_brand`
+        // uses for exactly this reason.
+        db.query("DEFINE FIELD OVERWRITE firm_id ON brand TYPE option<record<firm>>")
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+        let system_wide_id = Uuid::now_v7();
+        let now = chrono::Utc::now().to_rfc3339();
+        db.query(format!(
+            "CREATE $id SET name = 'System Wide', brand_key = 'system-wide', \
+             is_law_firm = false, inserted_at = $now, updated_at = $now RETURN {SELECT}"
+        ))
+        .bind(("id", record_id(TABLE, system_wide_id)))
+        .bind(("now", now))
         .await
+        .unwrap()
+        .check()
         .unwrap();
+        let system_wide_brand = find_by_id(&db, system_wide_id).await.unwrap().unwrap();
+        assert_eq!(system_wide_brand.firm_id, None);
 
+        // `mem_surreal`'s own fixture already pre-seeds every compiled
+        // house-brand key as a Firm-scoped row (ENG-659), so `all_firm_scoped`
+        // returns those too — this only asserts `a` and `b` are among them,
+        // not that they are the whole set.
         let all = all_firm_scoped(&db).await.unwrap();
-        assert_eq!(all, vec![a.clone(), b.clone()]);
+        assert!(all.contains(&a));
+        assert!(all.contains(&b));
         assert!(!all.contains(&system_wide_brand));
 
         let owner_view = visible_for_actor(&db, Role::Owner, None).await.unwrap();
@@ -1442,11 +1653,12 @@ mod tests {
 
         let worn = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Worn Brand".to_string(),
                 key: "worn-brand".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )
@@ -1460,11 +1672,12 @@ mod tests {
 
         let named = create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &NewBrand {
                 name: "Named Brand".to_string(),
                 key: "named-brand".to_string(),
+                firm_id: Some(firm.id),
                 ..NewBrand::default()
             },
         )

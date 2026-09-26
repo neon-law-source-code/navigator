@@ -3086,6 +3086,36 @@ mod surreal_read_tests {
     use crate::surreal::test_support::unmigrated;
     use crate::test_support::mem_surreal;
 
+    /// A fresh Firm and its Admin DRI's person id, fit to create a
+    /// Firm-scoped brand (ENG-659: `store::brands::create` refuses
+    /// `firm_id: None`) — a one-liner for the tests below that only need
+    /// *some* live brand key, not a particular Firm.
+    async fn practice_firm(db: &crate::surreal::SurrealDb, name: &str) -> (crate::firms::Firm, uuid::Uuid) {
+        let admin = crate::persons::create(
+            db,
+            &crate::persons::NewPerson::with_role(
+                format!("{name} Admin DRI"),
+                format!("{name}-admin-dri-{}@example.com", uuid::Uuid::now_v7()),
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+        let firm = crate::firms::create(
+            db,
+            &crate::firms::NewFirm {
+                name: name.to_string(),
+                status: "active".to_string(),
+                entity_id: crate::test_support::seed_entity(db).await,
+                admin_dri_person_id: admin,
+            },
+        )
+        .await
+        .unwrap();
+        (firm, admin)
+    }
+
     #[tokio::test]
     async fn find_by_id_reads_the_projects_cluster_row() {
         let db = unmigrated().await;
@@ -3215,13 +3245,15 @@ mod surreal_read_tests {
     #[tokio::test]
     async fn upsert_with_id_accepts_a_runtime_created_brand_key() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice_firm(&db, "Upsert Brand Practice").await;
         crate::brands::create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &crate::brands::NewBrand {
                 name: "Upsert Custom Brand".to_string(),
                 key: "upsert-custom-brand".to_string(),
+                firm_id: Some(firm.id),
                 ..Default::default()
             },
         )
@@ -3251,13 +3283,15 @@ mod surreal_read_tests {
     #[tokio::test]
     async fn create_accepts_a_runtime_created_brand_key() {
         let db = mem_surreal().await;
+        let (firm, admin) = practice_firm(&db, "Custom Brand Practice").await;
         crate::brands::create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &crate::brands::NewBrand {
                 name: "Custom Brand".to_string(),
                 key: "custom-brand".to_string(),
+                firm_id: Some(firm.id),
                 ..Default::default()
             },
         )
@@ -3303,13 +3337,15 @@ mod surreal_read_tests {
         // The established default must be a live brand before a historical
         // absent value may be backfilled; otherwise the upgrade names the
         // missing default instead of inventing a dangling reference.
+        let (firm, admin) = practice_firm(&db, "Pre-Brand DRI Practice").await;
         crate::brands::create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &crate::brands::NewBrand {
                 name: "Neon".to_string(),
                 key: "neon".to_string(),
+                firm_id: Some(firm.id),
                 ..Default::default()
             },
         )
@@ -3823,13 +3859,15 @@ mod surreal_read_tests {
     #[tokio::test]
     async fn the_directory_names_each_matter_s_brand() {
         let surreal = mem_surreal().await;
+        let (firm, admin) = practice_firm(&surreal, "Directory Brand Practice").await;
         crate::brands::create(
             &surreal,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &crate::brands::NewBrand {
                 name: "Directory Brand".to_string(),
                 key: "directory-brand".to_string(),
+                firm_id: Some(firm.id),
                 ..Default::default()
             },
         )

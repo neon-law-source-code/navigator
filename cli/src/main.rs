@@ -2803,7 +2803,7 @@ async fn run_project_notations(stale: &str, json: bool) -> ExitCode {
         return ExitCode::from(2);
     };
     let Some(stale_after) = parse_stale_duration(stale) else {
-        eprintln!("navigator project notations: invalid --stale duration '{stale}' (use e.g. 3d, 12h, or 30m)");
+        eprintln!("navigator project notations: invalid --stale duration (use e.g. 3d, 12h, or 30m)");
         return ExitCode::from(2);
     };
     remote::project_notations(Some(host), project_code, stale_after, json).await

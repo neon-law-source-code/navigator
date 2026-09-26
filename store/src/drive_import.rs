@@ -116,21 +116,7 @@ pub async fn import_project_files(
     let mut total_bytes = 0usize;
     let mut imported = Vec::with_capacity(listed_files.len());
     for file in listed_files {
-        if let Some(size) = file.size_bytes {
-            if size > MAX_FILE_BYTES as u64 {
-                return Err(DriveImportError::FileTooLarge {
-                    file_id: file.id,
-                    actual: size,
-                });
-            }
-            let size = usize::try_from(size).map_err(|_| DriveImportError::BatchTooLarge)?;
-            if total_bytes
-                .checked_add(size)
-                .is_none_or(|total| total > MAX_TOTAL_BYTES)
-            {
-                return Err(DriveImportError::BatchTooLarge);
-            }
-        }
+        validate_declared_size(&file.id, file.size_bytes, total_bytes)?;
 
         let downloaded = drive.download_file(&file.id).await?;
         if downloaded.bytes.len() > MAX_FILE_BYTES {
@@ -187,4 +173,28 @@ pub async fn import_project_files(
         });
     }
     Ok(imported)
+}
+
+fn validate_declared_size(
+    file_id: &str,
+    size_bytes: Option<u64>,
+    total_bytes: usize,
+) -> Result<(), DriveImportError> {
+    let Some(size) = size_bytes else {
+        return Ok(());
+    };
+    if size > MAX_FILE_BYTES as u64 {
+        return Err(DriveImportError::FileTooLarge {
+            file_id: file_id.to_owned(),
+            actual: size,
+        });
+    }
+    let size = usize::try_from(size).map_err(|_| DriveImportError::BatchTooLarge)?;
+    if total_bytes
+        .checked_add(size)
+        .is_none_or(|total| total > MAX_TOTAL_BYTES)
+    {
+        return Err(DriveImportError::BatchTooLarge);
+    }
+    Ok(())
 }

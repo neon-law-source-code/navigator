@@ -182,6 +182,13 @@ pub struct BareStatement {
     /// A second sentence with one inline link — the existing client's way
     /// in. Empty renders no second sentence.
     pub sign_in: Vec<CopyRun>,
+    /// Overrides the shared footer's wordmark for this bare page only. Empty
+    /// leaves the footer naming the current brand, as everywhere else; a
+    /// holding page for a house brand's own mark (Lawyer Shook) sets this to
+    /// the firm's legal name, since the bare page otherwise carries no other
+    /// mention of who actually renders it.
+    #[serde(default)]
+    pub footer_wordmark: String,
 }
 
 /// The [`HomeContent`] and any firm-owned lead copy injected into the render
@@ -282,6 +289,17 @@ pub fn HomePage(
         return rsx! { cyber_injury::CyberInjuryHome { chrome, content, copy: cyber } };
     }
     if let Some(bare) = content.bare.clone() {
+        // The footer otherwise names this brand's own mark (`chrome.firm_name`);
+        // a bare page that opts into `footer_wordmark` wants the footer under
+        // it to name that instead, without disturbing any other chrome field.
+        let footer_chrome = if bare.footer_wordmark.is_empty() {
+            chrome.clone()
+        } else {
+            PublicChrome {
+                firm_name: bare.footer_wordmark.clone(),
+                ..chrome.clone()
+            }
+        };
         return rsx! {
             document::Title { "{content.head_title}" }
             document::Meta { name: "description", content: "{content.meta_description}" }
@@ -343,7 +361,7 @@ pub fn HomePage(
                 // the firm's address and the way to its other sites, and the
                 // footer is one thing everywhere rather than everywhere but
                 // here.
-                PublicFooter { chrome: chrome.clone() }
+                PublicFooter { chrome: footer_chrome }
             }
         };
     }
@@ -1131,6 +1149,7 @@ mod tests {
                                 emphasis: true,
                                 href: None,
                             }],
+                            ..BareStatement::default()
                         }),
                         ..HomeContent::default()
                     },
@@ -1169,6 +1188,7 @@ mod tests {
                             heading: "Holding page".to_string(),
                             paragraph: "A statement.".to_string(),
                             sign_in: Vec::new(),
+                            ..BareStatement::default()
                         }),
                         ..HomeContent::default()
                     },
@@ -1205,6 +1225,7 @@ mod tests {
                             heading: "Coming Soon".to_string(),
                             paragraph: String::new(),
                             sign_in: Vec::new(),
+                            ..BareStatement::default()
                         }),
                         ..HomeContent::default()
                     },

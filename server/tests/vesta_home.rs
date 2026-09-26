@@ -99,7 +99,7 @@ async fn lawyer_shook_lists_the_launched_family_and_keeps_the_firm_notice() {
     let html = page("staging.lawyershook.com", "/").await;
     for expected in [
         "holding-page",
-        "Unless you have an active retainer",
+        "Shook Law PLLC is an American law firm",
         "home-practice",
         "Neon Law",
         "DeleteYourData.com",

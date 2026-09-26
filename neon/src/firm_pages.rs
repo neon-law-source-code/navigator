@@ -979,6 +979,9 @@ fn coming_soon_content(branding: &views::brand::Branding) -> webapp::home::HomeC
             // No sign-in line: unlike Lawyer Shook's holding page, these
             // practices have no active clients to let back in.
             sign_in: Vec::new(),
+            // The footer keeps naming this brand; only Lawyer Shook's
+            // holding page overrides it to the firm's legal name.
+            footer_wordmark: String::new(),
         }),
         // One landing page and nothing under it. The catalogued practice
         // cards would link the sibling brands' sites from a page that is
@@ -994,8 +997,8 @@ fn coming_soon_content(branding: &views::brand::Branding) -> webapp::home::HomeC
 fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     let legal_entity = branding.firm.legal_entity;
     let paragraph = format!(
-        "{legal_entity} is the legal office of Nicholas Shook. Unless you have an active \
-         retainer with {legal_entity}, they are not your attorney."
+        "{legal_entity} is an American law firm. We build brands that put the customer not \
+         the lawyer first."
     );
     let mut content = webapp::home::HomeContent {
         head_title: legal_entity.to_string(),
@@ -1003,6 +1006,10 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
         bare: Some(webapp::home::BareStatement {
             heading: legal_entity.to_string(),
             paragraph,
+            // The footer's wordmark otherwise carries this brand's own name
+            // ("Lawyer Shook"); the firm's holding page reads as the firm,
+            // so its footer names the legal entity instead.
+            footer_wordmark: legal_entity.to_string(),
             sign_in: vec![
                 webapp::home::CopyRun {
                     text: "Sign in ".to_string(),
@@ -1039,8 +1046,10 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
 /// newly registered brand cannot silently disappear from the holding page.
 /// Held-out channels remain out of the links until their launch decision is
 /// complete, but their identity stays available to the release inventory.
+/// Sorted alphabetically by name rather than registry order, since this is a
+/// directory for a reader to scan, not a ranking.
 fn portfolio_practices() -> Vec<webapp::home::PracticeLink> {
-    views::brand::BrandKey::LIVE
+    let mut practices: Vec<webapp::home::PracticeLink> = views::brand::BrandKey::LIVE
         .iter()
         .copied()
         .filter(|key| *key != BrandKey::LawyerShook)
@@ -1056,7 +1065,9 @@ fn portfolio_practices() -> Vec<webapp::home::PracticeLink> {
                 primary_color: key.default_palette().light.primary.to_string(),
             }
         })
-        .collect()
+        .collect();
+    practices.sort_by(|a, b| a.heading.cmp(&b.heading));
+    practices
 }
 
 #[cfg(test)]
@@ -1182,15 +1193,17 @@ mod lawyer_shook_holding_page_tests {
         assert_eq!(content.head_title, "Shook Law PLLC");
         assert!(bare
             .paragraph
-            .contains("Shook Law PLLC is the legal office of Nicholas Shook"));
+            .contains("Shook Law PLLC is an American law firm"));
         assert!(bare
             .paragraph
-            .contains("Unless you have an active retainer with Shook Law PLLC"));
+            .contains("We build brands that put the customer not the lawyer first."));
         assert!(
             !bare.paragraph.contains("Lawyer Shook"),
             "{}",
             bare.paragraph
         );
+        // The footer names the firm, not this brand's own "Lawyer Shook" mark.
+        assert_eq!(bare.footer_wordmark, "Shook Law PLLC");
         // The firm's notice leads into every admitted brand door.
         assert!(content.service.is_none());
         let headings: Vec<&str> = content
@@ -1201,16 +1214,17 @@ mod lawyer_shook_holding_page_tests {
         assert_eq!(
             headings,
             vec![
-                "Neon Law",
-                "DeleteYourData.com",
-                "DeleteYourDebt.com",
-                "Vesta Estate Planning",
-                "Misericordia Injury Law",
                 "Abhaya Immigration",
-                "Summons Defense",
                 "Daybridge Divorce Law",
                 "Death & Divorce",
-            ]
+                "DeleteYourData.com",
+                "DeleteYourDebt.com",
+                "Misericordia Injury Law",
+                "Neon Law",
+                "Summons Defense",
+                "Vesta Estate Planning",
+            ],
+            "the directory is alphabetical, not registry order"
         );
         assert!(content
             .practices

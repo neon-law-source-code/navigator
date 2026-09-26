@@ -55,9 +55,9 @@ Feature: Public routing on the firm's own host
     And the response body contains "<marker>"
 
     Examples:
-      | host                       | brand           | title                           | marker                              |
-      | staging.lawyershook.com    | Lawyer Shook    | Lawyer Shook \| Home              | Shook Law PLLC is the legal office |
-      | staging.summonsdefense.nyc | Summons Defense | Summons Defense \| Home          | Coming Soon                        |
+      | host                       | brand           | title                    | marker                                  |
+      | staging.lawyershook.com    | Lawyer Shook    | Lawyer Shook \| Home     | Shook Law PLLC is an American law firm  |
+      | staging.summonsdefense.nyc | Summons Defense | Summons Defense \| Home  | Coming Soon                             |
 
   Scenario Outline: The firm's published anonymous surface serves at the root
     # Each is anonymous: a stranger deciding whether to hire a lawyer must not

@@ -9810,7 +9810,7 @@ const LIVE_HOME_CONTRACTS: &[(views::brand::BrandKey, LiveHomeContract)] = &[
         views::brand::BrandKey::LawyerShook,
         LiveHomeContract::Holding {
             title: "<title>Lawyer Shook | Home</title>",
-            marker: "Shook Law PLLC is the legal office",
+            marker: "Shook Law PLLC is an American law firm",
         },
     ),
     (

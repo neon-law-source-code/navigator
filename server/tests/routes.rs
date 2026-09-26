@@ -16945,6 +16945,145 @@ async fn project_detail_page_renders_empty_state_when_project_has_no_documents()
 }
 
 #[tokio::test]
+async fn lawyer_project_notation_board_lists_started_and_never_started_templates() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, lawyer, cookie, _) = lawyer_project_fixture(&surreal).await;
+    let project_code = code_for_project(&surreal, project_id).await;
+    let body = b"---\nworkflow:\n  BEGIN:\n    label: Started\n  lawyer_review:\n    label: Review\n---\n# Intake\n";
+    let asset = store::documents::ingest_bytes(
+        &surreal,
+        &state.storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: "upload",
+            filename: "workflow.md",
+            kind: "agreement",
+            content_type: "text/markdown",
+            description: None,
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        body,
+    )
+    .await
+    .unwrap();
+    let version = |title: &str, asset_id| store::templates::Version {
+        title: title.to_string(),
+        respondent_type: "person".to_string(),
+        asset_id,
+        form_code: None,
+        kind: Some("onboarding".to_string()),
+        source_commit_sha: None,
+    };
+    let started_template = store::templates::save_version(
+        &surreal,
+        Some(project_id),
+        "started-intake",
+        version("Started intake", Some(asset.asset_id)),
+    )
+    .await
+    .unwrap()
+    .into_model();
+    store::templates::save_version(
+        &surreal,
+        Some(project_id),
+        "never-started-intake",
+        version("Never started intake", None),
+    )
+    .await
+    .unwrap();
+    let no_body_template = store::templates::save_version(
+        &surreal,
+        Some(project_id),
+        "started-without-body",
+        version("Started without body", None),
+    )
+    .await
+    .unwrap()
+    .into_model();
+    let in_progress = store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(
+            started_template.id,
+            lawyer.id,
+            project_id,
+            "lawyer_review",
+        ),
+    )
+    .await
+    .unwrap();
+    let no_body_notation = store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(no_body_template.id, lawyer.id, project_id, "BEGIN"),
+    )
+    .await
+    .unwrap();
+    store::notation_events::append_event(
+        &surreal,
+        store::notation_events::TransitionRecord {
+            notation_id: in_progress.id,
+            acting_person_id: Some(lawyer.id),
+            machine_kind: store::notation_events::MACHINE_WORKFLOW,
+            from_state: "BEGIN",
+            to_state: "lawyer_review",
+            condition: "",
+            payload_json: None,
+            recorded_at: "2026-09-25T14:03:00Z",
+        },
+    )
+    .await
+    .unwrap();
+    store::notation_events::append_event(
+        &surreal,
+        store::notation_events::TransitionRecord {
+            notation_id: in_progress.id,
+            acting_person_id: Some(lawyer.id),
+            machine_kind: store::notation_events::MACHINE_QUESTIONNAIRE,
+            from_state: "answering",
+            to_state: "answer_recorded",
+            condition: "",
+            payload_json: None,
+            recorded_at: "2026-09-25T14:02:00Z",
+        },
+    )
+    .await
+    .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{project_code}"))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = strip_hydration_markers(&body_string(response).await);
+    let board_start = body.find("project-notations").expect("notation board");
+    let board_end = body[board_start..]
+        .find("project-participations")
+        .map_or(body.len(), |offset| board_start + offset);
+    let board = &body[board_start..board_end];
+    assert!(board.contains("started-intake"), "{board}");
+    assert!(board.contains("never-started-intake"), "{board}");
+    assert!(board.contains("started-without-body"), "{board}");
+    assert!(board.contains(&in_progress.id.to_string()), "{board}");
+    assert!(board.contains(&no_body_notation.id.to_string()), "{board}");
+    assert!(
+        board.contains("lawyer-project-fixture@neonlaw.com"),
+        "{board}"
+    );
+    assert!(board.contains("lawyer_review"), "{board}");
+    assert!(board.contains("BEGIN"), "{board}");
+    assert!(board.contains("2026-09-25T14:03:00Z"), "{board}");
+    assert!(!board.contains("answer_recorded"), "{board}");
+    assert!(board.contains("never started"), "{board}");
+}
+
+#[tokio::test]
 async fn lawyer_project_documents_render_grouped_history_and_one_offs() {
     let (state, surreal) = state_with_engines().await;
     let (project_id, _lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;

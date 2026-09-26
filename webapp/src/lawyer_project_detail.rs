@@ -1367,9 +1367,9 @@ pub fn ParticipationTable(
 mod tests {
     use super::{
         admin_testimonial_card, documents_table, may_govern_lawyer_dri, notation_state_cell,
-        workflow_state_order, AdminTestimonialView, LawyerDetailView, LawyerDocRevision,
-        LawyerDocRow, ParticipationRow, ParticipationTable, ProjectNotationBoard,
-        ProjectNotationRow,
+        to_participation_rows, workflow_state_order, AdminTestimonialView, LawyerDetailView,
+        LawyerDocRevision, LawyerDocRow, ParticipationRow, ParticipationTable,
+        ProjectNotationBoard, ProjectNotationRow,
     };
     use dioxus::prelude::*;
 
@@ -1465,6 +1465,62 @@ mod tests {
         assert!(html.contains(">Lawyer DRI<"), "{html}");
         assert!(!html.contains("Make DRI"), "{html}");
         assert!(!html.contains("Remove DRI"), "{html}");
+    }
+
+    #[test]
+    #[cfg(feature = "server")]
+    fn participation_projection_joins_people_and_omits_unresolved_rows() {
+        let person_id = uuid::Uuid::now_v7();
+        let project_id = uuid::Uuid::now_v7();
+        let person = store::persons::Person {
+            id: person_id,
+            name: "Avery Attorney".to_string(),
+            given_name: None,
+            family_name: None,
+            middle_name: None,
+            email: "avery@example.test".to_string(),
+            oidc_subject: None,
+            microsoft_subject: None,
+            apple_subject: None,
+            role: store::persons::Role::Lawyer,
+            title: None,
+            phone: None,
+            xero_contact_id: None,
+            profile_image_url: Some("https://example.test/avatar.png".to_string()),
+            linkedin_url: None,
+            email_confirmed: false,
+            inserted_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let participation = |person_id| store::projects::PersonProjectRole {
+            id: uuid::Uuid::now_v7(),
+            person_id,
+            project_id,
+            participation: "lawyer".to_string(),
+            is_lawyer_dri: true,
+            is_client_dri: false,
+            inserted_at: "2026-09-25T00:00:00Z".to_string(),
+            updated_at: "2026-09-25T00:00:00Z".to_string(),
+        };
+        let rows = to_participation_rows(
+            &[
+                participation(person_id),
+                participation(uuid::Uuid::now_v7()),
+            ],
+            &[person],
+        );
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].person_name, "Avery Attorney");
+        assert_eq!(rows[0].person_email, "avery@example.test");
+        assert_eq!(rows[0].person_role, "lawyer");
+        assert_eq!(rows[0].participation, "lawyer");
+        assert!(rows[0].is_lawyer_dri);
+        assert!(!rows[0].is_client_dri);
+        assert_eq!(
+            rows[0].avatar_url.as_deref(),
+            Some(format!("/app/people/{person_id}/avatar").as_str())
+        );
     }
 
     #[test]

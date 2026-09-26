@@ -1067,12 +1067,12 @@ pub fn ParticipationTable(
                                         }
                                     }
                                     if can_manage_avatars {
-                                        td { class: "matter-avatar-cell",
+                                        td { class: "project-avatar-cell",
                                             Avatar {
                                                 name: row.person_name.clone(),
                                                 image_url: row.avatar_url.clone(),
                                                 size: 40,
-                                                class: "matter-avatar".to_string(),
+                                                class: "project-avatar".to_string(),
                                             }
                                             form {
                                                 class: "lawyer-detail__inline-form",
@@ -1085,6 +1085,7 @@ pub fn ParticipationTable(
                                                 "aria-label": "Set avatar for {row.person_name}",
                                                 input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
                                                 input {
+                                                    class: "nav-avatar-upload",
                                                     r#type: "file",
                                                     name: "file",
                                                     accept: "image/png,image/jpeg",
@@ -1254,7 +1255,7 @@ mod tests {
     #[test]
     fn admin_testimonial_form_preserves_client_words_and_attribution_boundary() {
         let html = dioxus_ssr::render_element(admin_testimonial_card(
-            "matter",
+            "project",
             "TOK",
             Some(&AdminTestimonialView {
                 quote: "Exact words from the client.".to_string(),
@@ -1271,7 +1272,7 @@ mod tests {
         assert!(html.contains("Exact words from the client."), "{html}");
         assert!(html.contains("Client supplied attribution"), "{html}");
         assert!(
-            html.contains(r#"action="/app/admin/projects/matter/testimonial""#),
+            html.contains(r#"action="/app/admin/projects/project/testimonial""#),
             "{html}"
         );
         assert!(html.contains(r#"value="public" checked"#), "{html}");
@@ -1282,14 +1283,14 @@ mod tests {
         let id = "00000000-0000-0000-0000-0000000000aa";
         let mut person = row(id, false);
         person.avatar_url = Some(format!("/app/people/{id}/avatar"));
-        let html = render_for_code("matter", vec![person], true, true);
+        let html = render_for_code("project", vec![person], true, true);
         assert!(
-            html.contains(r#"action="/app/admin/projects/matter/people/00000000-0000-0000-0000-0000000000aa/avatar""#),
+            html.contains(r#"action="/app/admin/projects/project/people/00000000-0000-0000-0000-0000000000aa/avatar""#),
             "{html}"
         );
         assert!(html.contains(r#"enctype="multipart/form-data""#), "{html}");
         assert!(
-            html.contains(r#"action="/app/admin/projects/matter/people/00000000-0000-0000-0000-0000000000aa/avatar/clear""#),
+            html.contains(r#"action="/app/admin/projects/project/people/00000000-0000-0000-0000-0000000000aa/avatar/clear""#),
             "{html}"
         );
     }

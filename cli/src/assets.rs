@@ -173,6 +173,7 @@ pub const PIRATA_ONE: FontFamily = FontFamily {
     label: "Pirata One",
     dir: "pirata-one",
     stem: "PirataOne",
+    extra_weights: &[],
 };
 
 /// Every family this binary publishes and verifies — the one list both halves

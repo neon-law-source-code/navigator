@@ -598,6 +598,30 @@ test_anonymous_denied_project_testimonial_form if {
 	not authz.allow with input as {"path": ["app", "projects", "sample-litigation", "testimonial"], "method": "POST", "session": null}
 }
 
+# ---------- POST /app/admin/projects/{code}/testimonial (admin matter write) ----------
+# Rego carries the system-tier part of this door. Matter participation is a
+# handler check because the policy input has no participation ledger.
+
+test_client_denied_admin_project_testimonial if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "testimonial"], "method": "POST", "session": client_session}
+}
+
+test_lawyer_denied_admin_project_testimonial if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "testimonial"], "method": "POST", "session": lawyer_session}
+}
+
+test_admin_reaches_admin_project_testimonial if {
+	authz.allow with input as {"path": ["app", "admin", "projects", "matter", "testimonial"], "method": "POST", "session": admin_session}
+}
+
+test_owner_reaches_admin_project_testimonial if {
+	authz.allow with input as {"path": ["app", "admin", "projects", "matter", "testimonial"], "method": "POST", "session": owner_session}
+}
+
+test_anonymous_denied_admin_project_testimonial if {
+	not authz.allow with input as {"path": ["app", "admin", "projects", "matter", "testimonial"], "method": "POST", "session": null}
+}
+
 # ---------- /app/api/testimonials/{id}/publish|unpublish (lawyer-tier door) ----------
 
 test_lawyer_tier_can_publish_or_unpublish_a_testimonial if {

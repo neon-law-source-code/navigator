@@ -94,6 +94,13 @@ pub struct ParticipationRow {
     pub is_client_dri: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct AdminTestimonialView {
+    pub quote: String,
+    pub attribution: String,
+    pub public_requested: bool,
+}
+
 /// The rendered lawyer workbench — every field wasm-safe (plain scalars; no
 /// `store`/`SeaORM`/`cloud`/`repos` type crosses to the client build).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -131,6 +138,8 @@ pub struct LawyerDetailView {
     pub trust: crate::portal_project_detail::TrustView,
     pub repository_url: Option<String>,
     pub participations: Vec<ParticipationRow>,
+    #[serde(default)]
+    pub testimonial: Option<AdminTestimonialView>,
     pub documents: Vec<LawyerDocRow>,
     /// The document-upload form's `?error=` flash, set when a re-upload's
     /// kind conflicts with the chain it would join.
@@ -367,6 +376,21 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     let viewer_is_lawyer_dri = person_id.is_some_and(|me| lawyer_dri_ids.contains(&me));
     let lawyer_dris = dri_names(&surreal, &lawyer_dri_ids).await?;
     let client_dris = dri_names(&surreal, &client_dri_ids).await?;
+    let testimonial = if role.is_admin_tier() {
+        match client_dri_ids.first().copied() {
+            Some(client_id) => store::testimonials::for_person_project(&surreal, client_id, id)
+                .await
+                .map_err(server_error)?
+                .map(|testimonial| AdminTestimonialView {
+                    quote: testimonial.quote,
+                    attribution: testimonial.attribution_label.unwrap_or_default(),
+                    public_requested: testimonial.consented_at.is_some(),
+                }),
+            None => None,
+        }
+    } else {
+        None
+    };
 
     let documents = store::assets::grouped_for_project(&surreal, id)
         .await
@@ -447,6 +471,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         trust,
         repository_url,
         participations,
+        testimonial,
         documents,
         error,
         asset_kind_choices: asset_kind_choices(),
@@ -611,6 +636,57 @@ fn documents_table(view: &LawyerDetailView) -> Element {
     }
 }
 
+/// The admin-only testimonial entry card. Its copy makes the attribution
+/// boundary explicit: the words belong to the client DRI, while the admin is
+/// recording them for a client who will not sign in to the portal.
+fn admin_testimonial_card(
+    code: &str,
+    csrf: &str,
+    testimonial: Option<&AdminTestimonialView>,
+) -> Element {
+    let testimonial = testimonial.cloned().unwrap_or_default();
+    let publication = if testimonial.public_requested {
+        "public"
+    } else {
+        "private"
+    };
+    rsx! {
+        section { class: "lawyer-detail__section project-testimonial",
+            h2 { "Client testimonial" }
+            FormCard {
+                title: "Enter client testimonial".to_string(),
+                action: format!("/app/admin/projects/{code}/testimonial"),
+                submit_label: "Save testimonial".to_string(),
+                heading: Heading::Hidden,
+                csrf_token: Some(csrf.to_string()),
+                intro: rsx! {
+                    p { class: "nav-muted",
+                        "As an admin, you attest that the client supplied this text and agreed to its use."
+                    }
+                },
+                fields: vec![
+                    Field::textarea("Testimonial", "quote", testimonial.quote, 5)
+                        .required()
+                        .help("Enter the client's words exactly as supplied."),
+                    Field::text("Attribution", "attribution", testimonial.attribution)
+                        .help("Optional. Use only an attribution the client supplied."),
+                    Field::radio(
+                        "Publication",
+                        "publication",
+                        vec![
+                            crate::components::Choice::new("private", "Keep private"),
+                            crate::components::Choice::new("public", "Request public use"),
+                        ],
+                        Some(publication.to_string()),
+                    )
+                    .required()
+                    .help("Public use is a request and still needs the normal publication approval."),
+                ],
+            }
+        }
+    }
+}
+
 /// The lawyer matter-detail workbench, server-side rendered.
 #[component]
 pub fn LawyerProjectDetail() -> Element {
@@ -701,6 +777,10 @@ pub fn LawyerProjectDetail() -> Element {
             }
 
             crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
+
+            if is_admin && !view.client_dris.is_empty() {
+                {admin_testimonial_card(&view.code, &csrf, view.testimonial.as_ref())}
+            }
 
             if view.trust.any {
                 section { class: "lawyer-detail__section",
@@ -1004,8 +1084,8 @@ pub fn ParticipationTable(
 #[cfg(test)]
 mod tests {
     use super::{
-        documents_table, may_govern_lawyer_dri, LawyerDetailView, LawyerDocRevision, LawyerDocRow,
-        ParticipationRow, ParticipationTable,
+        admin_testimonial_card, documents_table, may_govern_lawyer_dri, AdminTestimonialView,
+        LawyerDetailView, LawyerDocRevision, LawyerDocRow, ParticipationRow, ParticipationTable,
     };
     use dioxus::prelude::*;
 
@@ -1093,6 +1173,32 @@ mod tests {
         assert!(!may_govern_lawyer_dri(false, false, false));
         assert!(may_govern_lawyer_dri(true, false, true));
         assert!(may_govern_lawyer_dri(false, true, false));
+    }
+
+    #[test]
+    fn admin_testimonial_form_preserves_client_words_and_attribution_boundary() {
+        let html = dioxus_ssr::render_element(admin_testimonial_card(
+            "matter",
+            "TOK",
+            Some(&AdminTestimonialView {
+                quote: "Exact words from the client.".to_string(),
+                attribution: "Client supplied attribution".to_string(),
+                public_requested: true,
+            }),
+        ));
+        assert!(
+            html.contains(
+                "As an admin, you attest that the client supplied this text and agreed to its use."
+            ),
+            "{html}"
+        );
+        assert!(html.contains("Exact words from the client."), "{html}");
+        assert!(html.contains("Client supplied attribution"), "{html}");
+        assert!(
+            html.contains(r#"action="/app/admin/projects/matter/testimonial""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"value="public" checked"#), "{html}");
     }
 
     fn view_with_documents(documents: Vec<LawyerDocRow>) -> LawyerDetailView {

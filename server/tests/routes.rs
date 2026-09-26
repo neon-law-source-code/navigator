@@ -17710,6 +17710,182 @@ async fn admin_person_update_via_native_form_persists_and_redirects() {
     assert_eq!(row.role, store::persons::Role::Lawyer);
 }
 
+/// The admin matter form writes the testimonial owned by the matter's client
+/// DRI, not a testimonial owned by the acting admin.
+#[tokio::test]
+async fn admin_matter_testimonial_creates_for_the_client_dri_and_rejects_outsiders() {
+    let (state, surreal) = state_with_engines().await;
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Participant",
+            "participant@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let admin = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Actor",
+            "actor@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let outsider = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Outsider",
+            "outsider@example.com",
+            store::persons::Role::Admin,
+        ),
+    )
+    .await
+    .unwrap();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "matter".into(),
+            name: "Matter".into(),
+            status: "open".into(),
+            entity_id: uuid::Uuid::now_v7(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::designate_dri_in_surreal(
+        &surreal,
+        project.id,
+        client.id,
+        store::projects::DriSide::Client,
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, admin.id, "admin")
+        .await
+        .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (admin_cookie, csrf) = session_cookie_and_csrf_for_person(&admin);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/admin/projects/matter/testimonial")
+                .header(header::COOKIE, &admin_cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "quote=Supplied%20words&attribution=Founder&publication=public&_csrf={csrf}"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let saved = store::testimonials::for_person_project(&surreal, client.id, project.id)
+        .await
+        .unwrap()
+        .expect("the admin write must create the client DRI row");
+    assert_eq!(saved.quote, "Supplied words");
+    assert_eq!(saved.attribution_label.as_deref(), Some("Founder"));
+    assert!(saved.consented_at.is_some());
+    assert!(
+        store::testimonials::for_person_project(&surreal, admin.id, project.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let (outsider_cookie, outsider_csrf) = session_cookie_and_csrf_for_person(&outsider);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/admin/projects/matter/testimonial")
+                .header(header::COOKIE, &outsider_cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "quote=Nope&attribution=&publication=private&_csrf={outsider_csrf}"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// The client form remains unreachable from an impersonated read-only view;
+/// the policy middleware refuses the mutation before any handler runs.
+#[tokio::test]
+async fn view_as_client_testimonial_save_still_returns_forbidden() {
+    let (state, surreal) = state_with_engines().await;
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Participant",
+            "participant-view@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "matter-view".into(),
+            name: "Matter View".into(),
+            status: "open".into(),
+            entity_id: uuid::Uuid::now_v7(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::designate_dri_in_surreal(
+        &surreal,
+        project.id,
+        client.id,
+        store::projects::DriSide::Client,
+    )
+    .await
+    .unwrap();
+
+    let mut session =
+        portal::SessionData::fresh("participant-view@example.com", store::persons::Role::Client);
+    session.person_id = Some(client.id);
+    session.viewing_as_dri = Some(portal::session::DriView {
+        actor_sub: "actor-sub".into(),
+        actor_email: Some("actor@example.com".into()),
+        actor_person_id: Some(uuid::Uuid::now_v7()),
+        target_name: "Participant".into(),
+        target_email: client.email.clone(),
+    });
+    let cookie = format!(
+        "{}={}",
+        portal::session::SESSION_COOKIE_NAME,
+        test_sessions().encode(&session)
+    );
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/projects/matter-view/testimonial")
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("quote=Nope&attribution=&publication=private"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
 /// A one-pixel PNG, valid image bytes for the avatar upload tests below.
 const ONE_PIXEL_PNG: &[u8] = &[
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,

@@ -49,6 +49,20 @@ allow if {
     input.session.role == "owner"
 }
 
+# Matter-side testimonial entry is explicit even though Owner/Admin inherit the
+# general admin route bypass above. Keeping the route in the policy makes the
+# role-level contract visible beside its focused test matrix; participation is
+# still enforced by the handler because Rego has no matter ledger input.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "admin"
+    input.path[2] == "projects"
+    count(input.path) == 5
+    input.path[4] == "testimonial"
+    input.method == "POST"
+    is_admin(input.session)
+}
+
 # The service start door admits clients and lawyer-tier sessions. The handler
 # sends lawyer-tier POSTs to the existing lawyer start form; Clerk is not a
 # lawyer tier and must not reach this door.

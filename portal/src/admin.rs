@@ -696,6 +696,10 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             post(project_testimonial_save),
         )
         .route(
+            "/app/admin/projects/{project_code}/testimonial",
+            post(admin_project_testimonial_save),
+        )
+        .route(
             &format!("{prefix}/{{project_code}}/people"),
             post(project_participation_create),
         )
@@ -894,6 +898,104 @@ async fn project_testimonial_save(
             .into_response()
         }
     }
+}
+
+/// `POST /app/admin/projects/{project_code}/testimonial` — an Owner/Admin
+/// records the client DRI's words without changing the client-facing form.
+/// The caller must also participate on the named matter; Rego can admit the
+/// system tier, but it cannot read the participation ledger.
+async fn admin_project_testimonial_save(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    Path(code): Path<String>,
+    Form(input): Form<TestimonialForm>,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    let Some(session) = session.as_ref() else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(project) = admin_matter_project(&state.surreal, session, &code).await else {
+        return not_found_response();
+    };
+    let Some(client_id) = store::projects::participations_for_project(&state.surreal, project.id)
+        .await
+        .ok()
+        .and_then(|rows| {
+            rows.into_iter().find_map(|row| {
+                (row.is_client_dri
+                    && store::projects::PARTICIPATION_CLIENT_SIDE
+                        .contains(&row.participation.as_str()))
+                .then_some(row.person_id)
+            })
+        })
+    else {
+        return not_found_response();
+    };
+    let request_public = match input.publication.as_str() {
+        "public" => true,
+        "private" => false,
+        _ => {
+            return Redirect::to(&format!(
+                "/app/projects/{code}?error={}",
+                encode_query_value(
+                    "Choose whether to keep the testimonial private or request public use."
+                )
+            ))
+            .into_response();
+        }
+    };
+    match store::testimonials::save_for_client_dri(
+        &state.surreal,
+        client_id,
+        project.id,
+        &store::testimonials::TestimonialSubmission {
+            quote: &input.quote,
+            attribution_label: (!input.attribution.trim().is_empty())
+                .then(|| input.attribution.trim().to_string()),
+            request_public,
+        },
+    )
+    .await
+    {
+        Ok(_) => Redirect::to(&format!("/app/projects/{code}")).into_response(),
+        Err(
+            store::testimonials::TestimonialError::NotAuthorized
+            | store::testimonials::TestimonialError::NotFound,
+        ) => not_found_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "admin testimonial: save failed");
+            Redirect::to(&format!(
+                "/app/projects/{code}?error={}",
+                encode_query_value("The testimonial could not be saved.")
+            ))
+            .into_response()
+        }
+    }
+}
+
+/// Resolve the admin's matter scope for a privileged write. This is separate
+/// from `can_manage_project_participation`: staffing an unassigned matter is
+/// intentionally broader than changing content owned by a matter participant.
+async fn admin_matter_project(
+    surreal: &store::surreal::SurrealDb,
+    session: &SessionData,
+    code: &str,
+) -> Option<store::projects::Project> {
+    if session.viewing_as_dri.is_some() {
+        return None;
+    }
+    let person_id = session.person_id?;
+    let project = store::projects::find_by_code(surreal, code)
+        .await
+        .ok()
+        .flatten()?;
+    store::projects::participation_for_person(surreal, person_id, project.id)
+        .await
+        .ok()
+        .flatten()?;
+    Some(project)
 }
 
 fn can_submit_testimonial(

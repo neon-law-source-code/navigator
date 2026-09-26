@@ -661,6 +661,7 @@ fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<Adm
 /// participation row on the matter. The lawyer-only writes below additionally
 /// require the lawyer tier in their own handlers, which is what replaces the
 /// outer `/app/lawyer/*` policy rule those paths used to sit behind.
+#[allow(clippy::too_many_lines)]
 fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
     let prefix = APP_PROJECTS_PATH;
     // `{prefix}` (the list), `{prefix}/{code}` (the matter workbench), the forms,

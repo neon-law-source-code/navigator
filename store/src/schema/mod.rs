@@ -23,7 +23,7 @@
 
 use std::collections::BTreeMap;
 
-use surrealdb::types::{ErrorDetails, NotFoundError, RecordId};
+use surrealdb::types::{ErrorDetails, NotFoundError, RecordId, SurrealValue};
 use surrealdb::Error as SurrealQueryError;
 use thiserror::Error;
 
@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 60;
+pub const SCHEMA_VERSION: u32 = 61;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -190,6 +190,14 @@ pub enum SchemaError {
     ProjectBrandBackfillMissingDefault(String),
     #[error("project brand backfill dangling brand: {0}")]
     ProjectBrandBackfillDangling(String),
+    /// [`backfill_brand_firm_id`] found a `brand` row with `firm_id IS NONE`
+    /// that no `firm_brand` row wears and no `project.brand` names — this
+    /// should be a compiled house brand's row with a `firm_brand` match, or
+    /// an orphan the backfill deletes on its own, so this only ever fires
+    /// when the anchor Firm itself cannot be resolved to receive a
+    /// project-referenced orphan.
+    #[error("brand firm_id backfill: {0}")]
+    BrandFirmIdBackfillFirmLookup(String),
     /// A matter recorded under a prior schema version already holds a code
     /// [`cloud::workspace::RESERVED_PROJECT_CODES`] has since reserved. The
     /// `ASSERT` on `project.code` only guards future writes — SurrealDB does
@@ -311,6 +319,98 @@ async fn backfill_person_defaults(db: &SurrealDb) -> Result<(), SchemaError> {
     Ok(())
 }
 
+/// A `brand` row's id and key, when [`backfill_brand_firm_id`] needs to
+/// resolve a stray `firm_id IS NONE` row onto its owning Firm.
+#[derive(SurrealValue)]
+struct OrphanBrand {
+    id: RecordId,
+    brand_key: String,
+}
+
+/// Backfill every historical `brand.firm_id IS NONE` row onto the Firm that
+/// wears its key through `firm_brand` (ENG-659) — at most one Firm, since
+/// `firm_brand_key` is itself a UNIQUE index over `brand_key` alone, so two
+/// Firms can never both wear one key and there is no collision left to
+/// resolve with a synthetic key suffix. A row no Firm wears is deleted, the
+/// same "delete an unworn system-wide row" the migration is allowed to take
+/// — unless a `project.brand` still names it, in which case it is assigned
+/// to the anchor Firm instead of deleted (mirroring ENG-677's own precedent
+/// for an orphaned brand reference), so a live matter never points at a
+/// deleted row.
+///
+/// Tightens `brand.firm_id` to a required `record<firm>` only once every row
+/// is guaranteed to carry one. `navigator.surql` itself keeps the looser
+/// `option<record<firm>>` definition, so a fresh apply never races the
+/// tightening against this backfill — the same split
+/// [`backfill_project_brand`] already established for `project.brand`.
+async fn backfill_brand_firm_id(db: &SurrealDb) -> Result<(), SchemaError> {
+    let mut response = db
+        .query("SELECT id, brand_key FROM brand WHERE firm_id IS NONE")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    let orphans: Vec<OrphanBrand> = response.take(0).map_err(SchemaError::Apply)?;
+
+    for orphan in orphans {
+        let mut response = db
+            .query("SELECT VALUE firm_id FROM firm_brand WHERE brand_key = $key LIMIT 1")
+            .bind(("key", orphan.brand_key.clone()))
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+            .map_err(SchemaError::Apply)?;
+        let wearer: Vec<RecordId> = response.take(0).map_err(SchemaError::Apply)?;
+
+        if let Some(firm_id) = wearer.into_iter().next() {
+            db.query("UPDATE $id SET firm_id = $firm_id WHERE firm_id IS NONE")
+                .bind(("id", orphan.id.clone()))
+                .bind(("firm_id", firm_id))
+                .await
+                .and_then(surrealdb::IndexedResults::check)
+                .map_err(SchemaError::Apply)?;
+            continue;
+        }
+
+        let mut response = db
+            .query("SELECT VALUE id FROM project WHERE brand = $key LIMIT 1")
+            .bind(("key", orphan.brand_key.clone()))
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+            .map_err(SchemaError::Apply)?;
+        let referenced: Vec<RecordId> = response.take(0).map_err(SchemaError::Apply)?;
+
+        if referenced.is_empty() {
+            db.query("DELETE $id")
+                .bind(("id", orphan.id.clone()))
+                .await
+                .and_then(surrealdb::IndexedResults::check)
+                .map_err(SchemaError::Apply)?;
+            continue;
+        }
+
+        let anchor = crate::firms::anchor_firm(db)
+            .await
+            .map_err(|error| SchemaError::BrandFirmIdBackfillFirmLookup(error.to_string()))?
+            .ok_or_else(|| {
+                SchemaError::BrandFirmIdBackfillFirmLookup(format!(
+                    "no anchor Firm exists to receive orphaned brand {}",
+                    orphan.brand_key
+                ))
+            })?;
+        db.query("UPDATE $id SET firm_id = $firm_id WHERE firm_id IS NONE")
+            .bind(("id", orphan.id.clone()))
+            .bind(("firm_id", crate::surreal::record_id("firm", anchor.id)))
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+            .map_err(SchemaError::Apply)?;
+    }
+
+    db.query("DEFINE FIELD OVERWRITE firm_id ON brand TYPE record<firm>;")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(SchemaError::Apply)?;
+    Ok(())
+}
+
 async fn person_defaults_missing_rows(db: &SurrealDb) -> Result<usize, SchemaError> {
     let mut response = db
         .query("SELECT VALUE id FROM person WHERE (email_confirmed IS NONE OR is_admitted IS NONE)")
@@ -341,6 +441,7 @@ pub async fn apply(db: &SurrealDb) -> Result<(), SchemaError> {
 
     backfill_project_brand(db).await?;
     backfill_person_defaults(db).await?;
+    backfill_brand_firm_id(db).await?;
 
     db.query(format!(
         "UPSERT {VERSION_RECORD} SET version = $version, applied_at = time::now()"
@@ -446,6 +547,190 @@ mod tests {
     };
     use crate::surreal::test_support::unmigrated;
     use uuid::Uuid;
+
+    /// A historical `brand` row from before ENG-659, written with a raw
+    /// query exactly as a pre-migration build's `store::brands::create`
+    /// once would — `firm_id IS NONE`, no live path left to reproduce it.
+    ///
+    /// The very first `apply` against a fresh database already finds zero
+    /// `firm_id IS NONE` rows and tightens the field to a required
+    /// `record<firm>` immediately (there is nothing historical to
+    /// backfill yet) — the same shape [`PROJECT_BRAND_BACKFILL`]'s own
+    /// tightening `DEFINE FIELD` already takes for `project.brand`. So a
+    /// test that wants to simulate a *pre-tightening* row loosens the field
+    /// back open first, exactly as
+    /// `designating_a_dri_on_a_project_written_before_brand_was_defined`
+    /// does for `project.brand`.
+    async fn historical_orphan_brand(db: &crate::surreal::SurrealDb, key: &str) -> Uuid {
+        db.query("DEFINE FIELD OVERWRITE firm_id ON brand TYPE option<record<firm>>")
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+        let id = Uuid::now_v7();
+        let now = chrono::Utc::now().to_rfc3339();
+        db.query(
+            "CREATE $id SET name = $name, brand_key = $key, \
+             inserted_at = $now, updated_at = $now",
+        )
+        .bind(("id", crate::surreal::record_id("brand", id)))
+        .bind(("name", key.to_string()))
+        .bind(("key", key.to_string()))
+        .bind(("now", now))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+        id
+    }
+
+    /// ENG-659: a historical `firm_id IS NONE` brand row that some Firm
+    /// already wears through `firm_brand` is backfilled onto exactly that
+    /// Firm — the primary case the migration exists for, since every
+    /// compiled house brand reaches this state.
+    #[tokio::test]
+    async fn applying_backfills_a_worn_historical_brand_onto_its_wearing_firm() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+
+        let entity_id = crate::test_support::seed_entity(&db).await;
+        let admin = crate::persons::create(
+            &db,
+            &crate::persons::NewPerson::with_role(
+                "Backfill Admin DRI",
+                "backfill-admin-dri@example.com",
+                crate::persons::Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        let firm = crate::firms::create(
+            &db,
+            &crate::firms::NewFirm {
+                name: "Backfill Wearing Practice".to_string(),
+                status: "active".to_string(),
+                entity_id,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .unwrap();
+
+        let brand_id = historical_orphan_brand(&db, "worn-orphan").await;
+        crate::firms::attach_brand(&db, firm.id, "worn-orphan")
+            .await
+            .unwrap();
+
+        // Re-apply, exactly as a boot would against an already-seeded
+        // database: this is what runs the backfill now that the historical
+        // row and its `firm_brand` wearer both exist.
+        apply(&db).await.unwrap();
+
+        let backfilled = crate::brands::find_by_id(&db, brand_id)
+            .await
+            .unwrap()
+            .expect("the historical row survives the backfill");
+        assert_eq!(backfilled.firm_id, Some(firm.id));
+    }
+
+    /// ENG-659: a historical `firm_id IS NONE` row no Firm wears and no
+    /// Project names is deleted — the migration's own "delete an unworn
+    /// system-wide row" guidance.
+    #[tokio::test]
+    async fn applying_deletes_an_unworn_unreferenced_historical_brand() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+
+        let brand_id = historical_orphan_brand(&db, "truly-unworn-orphan").await;
+        apply(&db).await.unwrap();
+
+        assert!(
+            crate::brands::find_by_id(&db, brand_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "an unworn, unreferenced historical brand must be deleted, not left dangling"
+        );
+    }
+
+    /// ENG-659: a historical `firm_id IS NONE` row no Firm wears, but a
+    /// live Project still names, is not deleted — it is assigned to the
+    /// anchor Firm instead, mirroring ENG-677's own precedent for an
+    /// orphaned brand reference, so a live matter never points at a
+    /// deleted row.
+    #[tokio::test]
+    async fn applying_assigns_a_project_referenced_unworn_historical_brand_to_the_anchor_firm() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+
+        // The anchor Firm: an Entity claiming the configured anchor key,
+        // and a Firm on it — the same resolution `store::firms::anchor_firm`
+        // performs at read time.
+        let configured = std::env::var(crate::seed::BOOTSTRAP_COMPANY_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| crate::seed::FIRM_ENTITY_NAME.to_string());
+        let anchor_entity = crate::entities::create(
+            &db,
+            &crate::entities::NewEntity {
+                name: configured.clone(),
+                entity_type_id: crate::test_support::SEED_ENTITY_TYPE_ID,
+                jurisdiction_id: crate::test_support::SEED_ENTITY_JURISDICTION_ID,
+                phone: None,
+                url: None,
+                xero_id: None,
+                firm_anchor_key: Some(configured.to_lowercase()),
+            },
+        )
+        .await
+        .unwrap();
+        let admin = crate::persons::create(
+            &db,
+            &crate::persons::NewPerson::with_role(
+                "Anchor Admin DRI",
+                "anchor-admin-dri@example.com",
+                crate::persons::Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        let anchor_firm = crate::firms::create(
+            &db,
+            &crate::firms::NewFirm {
+                name: configured,
+                status: "active".to_string(),
+                entity_id: anchor_entity.id,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .unwrap();
+
+        let brand_id = historical_orphan_brand(&db, "project-referenced-orphan").await;
+        let project_entity_id = crate::test_support::seed_entity(&db).await;
+        crate::projects::create(
+            &db,
+            &crate::projects::NewProject {
+                code: "orphan-brand-project".to_string(),
+                name: "Orphan Brand Project".to_string(),
+                status: "open".to_string(),
+                brand: "project-referenced-orphan".to_string(),
+                entity_id: project_entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        apply(&db).await.unwrap();
+
+        let backfilled = crate::brands::find_by_id(&db, brand_id)
+            .await
+            .unwrap()
+            .expect("a project-referenced historical row must not be deleted");
+        assert_eq!(backfilled.firm_id, Some(anchor_firm.id));
+    }
 
     /// #1145: Navigator's authorization stays above the database, so
     /// every table lands `PERMISSIONS NONE`. That is also the engine's

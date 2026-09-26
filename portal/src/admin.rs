@@ -2513,11 +2513,12 @@ pub(crate) struct BrandCreateInput {
 
 /// `POST /app/admin/brands/new` — the same path the create form renders at, so a
 /// refusal reloads it with `?error=` and every field echoed. `firm_id` is
-/// never read from the form: Owner always creates system-wide, and an
-/// Admin's Firm is re-resolved server-side from their own DRI membership,
+/// never read from the form: every brand is Firm-scoped (ENG-659), and the
+/// caller's own Firm is re-resolved server-side from their DRI membership,
 /// exactly as `store::brands::create`'s own `authorize` would insist on —
 /// trusting a client-submitted Firm id here would let an Admin DRI of one
-/// Firm name a brand scoped to another.
+/// Firm name a brand scoped to another. Owner holds no Firm membership at
+/// all, so Owner is refused the same way a DRI-less Admin is.
 pub(crate) async fn brands_create(
     State(state): State<AdminState>,
     session: Option<Extension<SessionData>>,
@@ -2540,28 +2541,28 @@ pub(crate) async fn brands_create(
         back_to_brand_new_form(&query)
     };
 
-    let firm_id = if session_data.role.is_owner() {
-        None
-    } else {
-        let Some(person_id) = session_data.person_id else {
-            return refuse("Your session isn't linked to a firm person.");
-        };
-        let memberships =
-            match store::firms::memberships_for_person(&state.surreal, person_id).await {
-                Ok(memberships) => memberships,
-                Err(error) => {
-                    tracing::error!(error = %error, "brands_create: membership lookup failed");
-                    return refuse("Could not resolve your Firm membership.");
-                }
-            };
-        let Some(firm_id) = memberships
-            .iter()
-            .find(|m| m.is_dri && m.membership == store::firms::FirmMembership::Admin)
-            .map(|m| m.firm_id)
-        else {
-            return refuse("You are not the Admin DRI of any Firm.");
-        };
-        Some(firm_id)
+    // Every brand is Firm-scoped (ENG-659): the caller — Owner included —
+    // must be the Admin DRI of some Firm, resolved server-side from their
+    // own membership rather than trusted from the form, exactly as
+    // `store::brands::create`'s own `authorize` would insist on anyway.
+    // Owner holds no `person_firm_role` row at all, so Owner reaches the
+    // same refusal a DRI-less Admin does.
+    let Some(person_id) = session_data.person_id else {
+        return refuse("Your session isn't linked to a firm person.");
+    };
+    let memberships = match store::firms::memberships_for_person(&state.surreal, person_id).await {
+        Ok(memberships) => memberships,
+        Err(error) => {
+            tracing::error!(error = %error, "brands_create: membership lookup failed");
+            return refuse("Could not resolve your Firm membership.");
+        }
+    };
+    let Some(firm_id) = memberships
+        .iter()
+        .find(|m| m.is_dri && m.membership == store::firms::FirmMembership::Admin)
+        .map(|m| m.firm_id)
+    else {
+        return refuse("You are not the Admin DRI of any Firm.");
     };
 
     match store::brands::create(
@@ -2571,7 +2572,7 @@ pub(crate) async fn brands_create(
         &store::brands::NewBrand {
             name: input.name.clone(),
             key: input.key.clone(),
-            firm_id,
+            firm_id: Some(firm_id),
             typeface: (!input.typeface.is_empty()).then(|| input.typeface.clone()),
             primary_color: (!input.primary_color.is_empty()).then(|| input.primary_color.clone()),
             ..store::brands::NewBrand::default()

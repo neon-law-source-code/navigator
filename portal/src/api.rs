@@ -814,14 +814,19 @@ pub enum BrandPresentationError {
     Internal(String),
 }
 
+/// `typeface`/`font_family` are `None` to leave that field unchanged
+/// (ENG-659: the native Admin edit form sends this when its Firm has no
+/// uploaded font to choose, or none was selected) — `Some(value)` behaves
+/// exactly as before, catalog validation included, so `PATCH
+/// /app/api/brands/{key}` is unaffected: it always sends `Some`.
 pub async fn apply_brand_presentation(
     surreal: &store::surreal::SurrealDb,
     actor_role: store::persons::Role,
     actor_person_id: Option<uuid::Uuid>,
     key: &str,
-    typeface: &str,
+    typeface: Option<&str>,
     primary_color: &str,
-    font_family: &str,
+    font_family: Option<&str>,
 ) -> Result<store::brands::Brand, BrandPresentationError> {
     let brand =
         match store::brands::find_by_key_for_actor(surreal, actor_role, actor_person_id, key).await
@@ -834,15 +839,17 @@ pub async fn apply_brand_presentation(
             ) => return Err(BrandPresentationError::NotFound),
             Err(error) => return Err(BrandPresentationError::Internal(error.to_string())),
         };
-    if typeface != "uploaded" && views::brand::typeface_by_id(typeface).is_none() {
-        return Err(BrandPresentationError::UnknownChoice(format!(
-            "typeface must be one of: {}, uploaded",
-            views::brand::TYPEFACES
-                .iter()
-                .map(|face| face.id)
-                .collect::<Vec<_>>()
-                .join(", ")
-        )));
+    if let Some(typeface) = typeface {
+        if typeface != "uploaded" && views::brand::typeface_by_id(typeface).is_none() {
+            return Err(BrandPresentationError::UnknownChoice(format!(
+                "typeface must be one of: {}, uploaded",
+                views::brand::TYPEFACES
+                    .iter()
+                    .map(|face| face.id)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
     }
     match store::brands::update(
         surreal,
@@ -850,9 +857,9 @@ pub async fn apply_brand_presentation(
         actor_person_id,
         brand.id,
         &store::brands::BrandEdit {
-            typeface: Some(Some(typeface.to_string())),
+            typeface: typeface.map(|value| Some(value.to_string())),
             primary_color: Some(Some(primary_color.to_string())),
-            font_family: Some((!font_family.is_empty()).then(|| font_family.to_string())),
+            font_family: font_family.map(|value| (!value.is_empty()).then(|| value.to_string())),
             ..store::brands::BrandEdit::default()
         },
     )
@@ -883,9 +890,9 @@ async fn update_brand_presentation(
         session.role,
         session.person_id,
         &key,
-        &input.typeface,
+        Some(&input.typeface),
         &input.primary_color,
-        &input.font_family,
+        Some(&input.font_family),
     )
     .await
     {

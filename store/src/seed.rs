@@ -1454,11 +1454,12 @@ async fn seed_canonical_into(
     // roles must be seeded first.
     seed_persons(surreal, r).await?;
     seed_user_roles(surreal, r).await?;
-    // The compiled house-brand keys migrate into `brand` rows before any
-    // Firm attaches one: `store::firms::attach_brand` validates a key
+    // `seed_practice` resolves/creates the practice Firm, then migrates the
+    // compiled house-brand keys into `brand` rows scoped to it before
+    // attaching each one: `store::firms::attach_brand` validates a key
     // against this table now, not the closed `CLOSED_BRAND_KEYS` array
-    // (ENG-496).
-    seed_brands(surreal).await?;
+    // (ENG-496), and every row it creates must already carry that Firm's id
+    // (ENG-659).
     seed_practice(surreal).await?;
     seed_firm_memberships(surreal).await?;
     seed_questions(surreal, r).await?;
@@ -2900,102 +2901,95 @@ pub fn compiled_brand_name(key: &str) -> Option<&'static str> {
         .map(|brand| brand.name)
 }
 
-/// Migrate every compiled house-brand key into a system-wide `brand` row
-/// (ENG-496), with the identity values their compiled `Branding` entries
-/// carry. `store` cannot depend on `views`, so those values — including each
-/// palette's light-mode primary hex (ENG-586: `primary_color` holds a
-/// validated hex, not a palette id) — are copied into [`COMPILED_BRANDS`]
-/// rather than read from it. The compiled brands' real presentation still
-/// renders from the existing static stylesheet path
-/// (`views::brand_presentation`'s own compiled `PALETTE`/`TYPEFACES`), not
-/// from these columns; this migration keeps the row's stored hex in step
-/// with that compiled palette so nothing renders differently on upgrade
-/// (`views::brand_presentation`'s own test asserts every compiled palette
-/// clears the same WCAG AA gate this write enforces).
-/// Idempotent: a name or key already taken is this same migration having
-/// already run.
-async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
+/// Migrate every compiled house brand into a `brand` row scoped to `firm`
+/// (ENG-659: `store::brands::create` refuses `firm_id: None`, so every
+/// compiled brand is Firm-scoped from the moment it is first seeded — there
+/// is no system-wide row created here any more), with the identity values
+/// their compiled `Branding` entries carry. `store` cannot depend on
+/// `views`, so those values — including each palette's light-mode primary
+/// hex (ENG-586: `primary_color` holds a validated hex, not a palette id) —
+/// are copied into [`COMPILED_BRANDS`] rather than read from it. The
+/// compiled brands' real presentation still renders from the existing
+/// static stylesheet path (`views::brand_presentation`'s own compiled
+/// `PALETTE`/`TYPEFACES`), not from these columns; this migration keeps the
+/// row's stored hex in step with that compiled palette so nothing renders
+/// differently on upgrade (`views::brand_presentation`'s own test asserts
+/// every compiled palette clears the same WCAG AA gate this write
+/// enforces).
+///
+/// Goes through [`crate::brands::seed_upsert`] rather than the authorized
+/// `create`/`update`: this is trusted system seeding, not a caller-driven
+/// request, and a test engine may already carry the same compiled keys
+/// under an unrelated fixture Firm (`store::surreal::test_support::mem`),
+/// which the authorized pair would correctly refuse to let this Firm's own
+/// Admin DRI edit. Idempotent: an existing name or key is this migration
+/// having already run, and only its typeface/colour are refreshed.
+async fn seed_brands(surreal: &SurrealDb, firm: &crate::firms::Firm) -> anyhow::Result<()> {
     for brand in COMPILED_BRANDS {
-        match crate::brands::create(
+        crate::brands::seed_upsert(
             surreal,
-            crate::persons::Role::Owner,
-            None,
             &crate::brands::NewBrand {
                 name: brand.name.to_string(),
                 key: brand.key.to_string(),
-                is_law_firm: true,
-                legal_entity: Some(FIRM_ENTITY_NAME.to_string()),
+                firm_id: Some(firm.id),
                 typeface: Some(brand.typeface.to_string()),
                 primary_color: Some(brand.primary_hex.to_string()),
                 ..crate::brands::NewBrand::default()
             },
         )
-        .await
-        {
-            Ok(_) => {}
-            Err(
-                crate::brands::BrandError::DuplicateName | crate::brands::BrandError::DuplicateKey,
-            ) => {
-                if let Some(existing) = crate::brands::find_by_key(surreal, brand.key).await? {
-                    crate::brands::update(
-                        surreal,
-                        crate::persons::Role::Owner,
-                        None,
-                        existing.id,
-                        &crate::brands::BrandEdit {
-                            typeface: Some(Some(brand.typeface.to_string())),
-                            primary_color: Some(Some(brand.primary_hex.to_string())),
-                            ..crate::brands::BrandEdit::default()
-                        },
-                    )
-                    .await?;
-                }
-            }
-            Err(error) => return Err(error.into()),
-        }
+        .await?;
     }
     Ok(())
 }
 
-/// The one practice this deployment already is: the `Shook Law PLLC` entity,
-/// wearing every registered house-brand key. Idempotent: an existing Firm on
-/// this Entity is left exactly as it is, Admin DRI included — this only
-/// chooses [`PRIMARY_ADMIN_EMAIL`] for the *first* creation (ENG-499).
-async fn seed_practice(surreal: &SurrealDb) -> anyhow::Result<()> {
+/// Find or create the one practice this deployment already is: the `Shook
+/// Law PLLC` entity's Firm, with its own Admin DRI. Idempotent: an existing
+/// Firm on this Entity is left exactly as it is, Admin DRI included — this
+/// only chooses [`PRIMARY_ADMIN_EMAIL`] for the *first* creation (ENG-499).
+async fn ensure_practice_firm(surreal: &SurrealDb) -> anyhow::Result<crate::firms::Firm> {
     let entity = crate::entities::find_by_name(surreal, FIRM_ENTITY_NAME)
         .await?
         .ok_or_else(|| anyhow::anyhow!("canonical seed is missing {FIRM_ENTITY_NAME}"))?;
-    let firm = match crate::firms::find_by_entity_id(surreal, entity.id).await? {
-        Some(firm) => firm,
+    let admin_dri = crate::persons::find_by_email_ci(surreal, PRIMARY_ADMIN_EMAIL)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!("canonical seed is missing the primary admin {PRIMARY_ADMIN_EMAIL}")
+        })?
+        .id;
+    match crate::firms::find_by_entity_id(surreal, entity.id).await? {
+        Some(firm) => Ok(firm),
         None => match crate::firms::create(
             surreal,
             &crate::firms::NewFirm {
                 name: FIRM_ENTITY_NAME.to_string(),
                 status: "active".to_string(),
                 entity_id: entity.id,
-                admin_dri_person_id: crate::persons::find_by_email_ci(surreal, PRIMARY_ADMIN_EMAIL)
-                    .await?
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "canonical seed is missing the primary admin {PRIMARY_ADMIN_EMAIL}"
-                        )
-                    })?
-                    .id,
+                admin_dri_person_id: admin_dri,
             },
         )
         .await
         {
-            Ok(firm) => firm,
+            Ok(firm) => Ok(firm),
             Err(crate::firms::FirmError::DuplicateEntity) => {
                 crate::firms::find_by_entity_id(surreal, entity.id)
                     .await?
                     .ok_or_else(|| {
                         anyhow::anyhow!("firm for {FIRM_ENTITY_NAME} exists but did not read")
-                    })?
+                    })
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => Err(error.into()),
         },
-    };
+    }
+}
+
+/// The one practice this deployment already is, wearing every registered
+/// house-brand key. Resolves or creates the Firm first (ENG-659: every
+/// compiled brand must be created *as* that Firm's own row, so the Firm has
+/// to exist before [`seed_brands`] runs), then attaches each key through
+/// `firm_brand`.
+async fn seed_practice(surreal: &SurrealDb) -> anyhow::Result<()> {
+    let firm = ensure_practice_firm(surreal).await?;
+    seed_brands(surreal, &firm).await?;
     for key in crate::firms::CLOSED_BRAND_KEYS {
         match crate::firms::ensure_brand(surreal, firm.id, key).await {
             Ok(()) | Err(crate::firms::FirmError::DuplicateBrand) => {}

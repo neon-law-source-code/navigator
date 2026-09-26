@@ -2146,19 +2146,21 @@ mod tests {
     #[tokio::test]
     async fn attach_brand_accepts_a_runtime_created_brand_key() {
         let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Runtime Brand Wearer", admin).await;
         crate::brands::create(
             &db,
-            Role::Owner,
-            None,
+            Role::Admin,
+            Some(admin),
             &crate::brands::NewBrand {
                 name: "Runtime Brand".to_string(),
                 key: "runtime-brand".to_string(),
+                firm_id: Some(firm.id),
                 ..crate::brands::NewBrand::default()
             },
         )
         .await
         .unwrap();
-        let firm = practice(&db, "Runtime Brand Wearer").await;
 
         attach_brand(&db, firm.id, "runtime-brand").await.unwrap();
 

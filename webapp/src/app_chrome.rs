@@ -492,10 +492,49 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+
+        // `mem`'s own fixture scopes every compiled brand to a firm id that
+        // names no real Firm (ENG-659), deliberately, so it cannot pollute
+        // every other test's own listing/count over the `firm`/`entity`
+        // tables. This test needs to author that row as a *real* Firm's
+        // Admin DRI, so it reassigns the existing "neon" row onto a real
+        // Firm created just for this test — a raw write, since `firm_id` is
+        // otherwise fixed at creation and never reassigned through `update`.
+        let entity_id = store::test_support::seed_entity(&surreal).await;
+        let admin = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Neon Logo Admin DRI",
+                "neon-logo-admin-dri@example.com",
+                store::persons::Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        let firm = store::firms::create(
+            &surreal,
+            &store::firms::NewFirm {
+                name: "Neon Logo Practice".to_string(),
+                status: "active".to_string(),
+                entity_id,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .unwrap();
+        surreal
+            .query("UPDATE $id SET firm_id = $firm_id")
+            .bind(("id", store::surreal::record_id("brand", brand.id)))
+            .bind(("firm_id", store::surreal::record_id("firm", firm.id)))
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+
         store::brands::set_logo(
             &surreal,
-            store::persons::Role::Owner,
-            None,
+            store::persons::Role::Admin,
+            Some(admin.id),
             brand.id,
             "brands/neon/logo.svg",
             "image/svg+xml",

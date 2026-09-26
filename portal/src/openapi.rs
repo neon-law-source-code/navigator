@@ -282,10 +282,11 @@ pub fn document_with_base(base: &str) -> Value {
           "patch": {
             "summary": "Update a brand's typeface and palette",
             "description":
-              "Sets the brand row's typeface and palette from the closed catalogs in \
-               `views::brand`. Free CSS is refused. The path parameter is the brand key \
-               string, not a UUID. Authorization: Owner for a system-wide brand; that \
-               Firm's Admin DRI for a Firm-scoped brand. Lawyer and Clerk are denied.",
+              "Sets the brand row's typeface and palette. `typeface` is `\"uploaded\"` or one \
+               of the closed catalog ids in `views::brand`; free CSS is refused. The path \
+               parameter is the brand key string, not a UUID. Every brand is Firm-scoped: \
+               Owner may edit any Firm's brand, and that Firm's own Admin DRI may edit its \
+               own. Lawyer and Clerk are denied.",
             "parameters": [
               { "name": "key", "in": "path", "required": true,
                 "schema": { "type": "string" } }

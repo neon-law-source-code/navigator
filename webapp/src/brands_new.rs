@@ -1,13 +1,12 @@
-//! `/app/admin/brands/new` — create a brand row (ENG-586).
+//! `/app/admin/brands/new` — create a brand row (ENG-586, ENG-659).
 //!
-//! Owner creates a system-wide brand (`firm_id: None`) and never sees a Firm
-//! picker — `store::brands::create` refuses a Firm-scoped attempt from
-//! Owner outright. A Firm's own Admin DRI creates a brand pinned to that
-//! Firm and cannot create a system-wide one; the form resolves and pins that
-//! Firm automatically rather than offering a picker, since an Admin may only
-//! ever create for the one Firm they are the DRI of. An Admin who is DRI of
-//! no Firm sees the form disabled with an explanation, matching the same
-//! shape [`store::brands::BrandError::NotAuthorized`] would refuse anyway.
+//! Every brand is Firm-scoped: only a Firm's own Admin DRI may create one,
+//! pinned to that Firm automatically rather than offered as a picker, since
+//! an Admin may only ever create for the one Firm they are the DRI of.
+//! Owner holds no Firm membership at all, so Owner sees the same disabled
+//! explanation an Admin who is DRI of no Firm does — Owner no longer
+//! creates a system-wide row through this CRUD; `store::brands::create`
+//! refuses `firm_id: None` outright, for every actor.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -95,10 +94,6 @@ pub async fn get_brand_new_form() -> Result<BrandNewView, ServerFnError> {
         site_name: crate::app_chrome::firm_name_from_context().await,
     };
 
-    if role == ViewerRole::Owner {
-        return Ok(base);
-    }
-
     let surreal = consume_context::<store::surreal::SurrealDb>();
     let Some(person_id) = crate::admin_listing::injected_person_id().await else {
         return Ok(BrandNewView {
@@ -143,17 +138,20 @@ fn new_body(view: &BrandNewView) -> Element {
         return rsx! {
             h1 { "Create brand" }
             p { class: "nav-form-error", role: "alert",
-                "You are not the Admin DRI of any Firm, so you may not create a brand. Ask your \
-                 Firm's Owner to appoint you first."
+                "You are not the Admin DRI of any Firm, so you may not create a brand. Only a \
+                 Firm's own Admin DRI creates its brand — ask that Firm's Owner to appoint you \
+                 first."
             }
             p { a { href: "/app/admin/brands", "← Brands" } }
         };
     }
 
-    let scope_note = view.firm_name.as_ref().map_or_else(
-        || "This brand will be system-wide, visible to every Firm.".to_string(),
-        |name| format!("This brand will be scoped to {name}."),
-    );
+    // Every brand is Firm-scoped (ENG-659) — `admin_has_no_firm` above is
+    // the only refusal, so reaching here always means a real DRI Firm name.
+    let scope_note = view
+        .firm_name
+        .as_ref()
+        .map_or_else(String::new, |name| format!("This brand will be scoped to {name}."));
 
     let fields = vec![
         Field::text("Name", "name", echoed(q.name.as_ref())).required(),
@@ -242,8 +240,8 @@ mod tests {
     fn view(query: BrandNewQuery) -> BrandNewView {
         BrandNewView {
             found: true,
-            role: ViewerRole::Owner,
-            firm_name: None,
+            role: ViewerRole::Admin,
+            firm_name: Some("Acme Practice".to_string()),
             admin_has_no_firm: false,
             typefaces: vec![FormChoice {
                 value: "gorp-serif".to_string(),
@@ -262,9 +260,9 @@ mod tests {
     }
 
     #[test]
-    fn an_owner_sees_no_firm_picker_and_the_form_posts_to_the_collection() {
+    fn an_admin_dri_sees_their_firm_pinned_and_the_form_posts_to_the_collection() {
         let html = render(&view(BrandNewQuery::default()));
-        assert!(html.contains("system-wide"), "{html}");
+        assert!(html.contains("scoped to Acme Practice"), "{html}");
         assert!(html.contains(r#"action="/app/admin/brands/new""#), "{html}");
         assert!(html.contains(r#"name="name""#), "{html}");
         assert!(html.contains(r#"name="key""#), "{html}");
@@ -272,19 +270,24 @@ mod tests {
         assert!(!html.contains(r#"name="firm_id""#), "{html}");
     }
 
+    /// ENG-659: every brand is Firm-scoped now, and Owner holds no Firm
+    /// membership at all, so Owner sees the same disabled explanation a
+    /// DRI-less Admin does — there is no more system-wide creation path.
     #[test]
-    fn an_admin_dri_sees_their_firm_pinned() {
+    fn an_owner_sees_the_same_disabled_explanation_as_a_dri_less_admin() {
         let mut view = view(BrandNewQuery::default());
-        view.role = ViewerRole::Admin;
-        view.firm_name = Some("Acme Practice".to_string());
+        view.role = ViewerRole::Owner;
+        view.firm_name = None;
+        view.admin_has_no_firm = true;
         let html = render(&view);
-        assert!(html.contains("scoped to Acme Practice"), "{html}");
+        assert!(html.contains("not the Admin DRI of any Firm"), "{html}");
+        assert!(!html.contains(r#"name="name""#), "{html}");
     }
 
     #[test]
     fn an_admin_with_no_dri_firm_sees_a_disabled_explanation_not_a_form() {
         let mut view = view(BrandNewQuery::default());
-        view.role = ViewerRole::Admin;
+        view.firm_name = None;
         view.admin_has_no_firm = true;
         let html = render(&view);
         assert!(html.contains("not the Admin DRI of any Firm"), "{html}");

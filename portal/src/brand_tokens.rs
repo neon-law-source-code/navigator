@@ -121,13 +121,36 @@ mod tests {
     #[tokio::test]
     async fn a_custom_brand_with_a_free_hex_and_uploaded_font_renders_derived_tokens() {
         let surreal = mem_surreal().await;
+        let entity_id = store::test_support::seed_entity(&surreal).await;
+        let admin = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Custom Brand Admin DRI",
+                "custom-brand-admin-dri@example.com",
+                store::persons::Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        let firm = store::firms::create(
+            &surreal,
+            &store::firms::NewFirm {
+                name: "Custom Brand Practice".to_string(),
+                status: "active".to_string(),
+                entity_id,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .unwrap();
         let brand = store::brands::create(
             &surreal,
-            store::persons::Role::Owner,
-            None,
+            store::persons::Role::Admin,
+            Some(admin.id),
             &store::brands::NewBrand {
                 name: "Custom Brand".to_string(),
                 key: "custom-brand".to_string(),
+                firm_id: Some(firm.id),
                 primary_color: Some("#007c91".to_string()),
                 typeface: Some("uploaded".to_string()),
                 ..Default::default()
@@ -137,8 +160,8 @@ mod tests {
         .unwrap();
         store::brands::set_font(
             &surreal,
-            store::persons::Role::Owner,
-            None,
+            store::persons::Role::Admin,
+            Some(admin.id),
             brand.id,
             "Custom Sans",
             "fonts/brands/custom-brand/abc123.woff2",

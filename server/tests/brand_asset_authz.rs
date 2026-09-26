@@ -342,8 +342,12 @@ async fn post_font_licensed(
 }
 
 async fn post_presentation(fixture: &Fixture, session: &SessionCookie) -> StatusCode {
+    // ENG-659: the native form's `typeface` field carries the chosen
+    // uploaded font family name directly — there is no separate
+    // `font_family` field any more. `post_brand_edit` translates a non-empty
+    // value into `typeface = "uploaded"` and `font_family = <this value>`.
     let body = format!(
-        "_csrf={}&typeface=gorp-serif&primary_color=%23007c91&font_family=Replacement+Sans",
+        "_csrf={}&typeface=Replacement+Sans&primary_color=%23007c91",
         session.csrf
     );
     fixture
@@ -545,7 +549,7 @@ async fn the_target_admin_and_owner_can_read_and_edit_brand_presentation() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(edited.typeface.as_deref(), Some("gorp-serif"));
+    assert_eq!(edited.typeface.as_deref(), Some("uploaded"));
     assert_eq!(edited.primary_color.as_deref(), Some("#007c91"));
     assert_eq!(edited.font_family.as_deref(), Some("Replacement Sans"));
 

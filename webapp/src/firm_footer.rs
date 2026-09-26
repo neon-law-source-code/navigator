@@ -570,11 +570,12 @@ mod tests {
         .unwrap();
         store::brands::create(
             &surreal,
-            store::persons::Role::Owner,
-            None,
+            store::persons::Role::Admin,
+            Some(admin_b.id),
             &store::brands::NewBrand {
                 name: "Acme Runtime Brand".to_string(),
                 key: "acme-runtime-brand".to_string(),
+                firm_id: Some(firm_b.id),
                 ..Default::default()
             },
         )

@@ -77,17 +77,6 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
     let surreal = consume_context::<store::surreal::SurrealDb>();
     let actor_person_id = crate::admin_listing::injected_person_id().await;
 
-    let typefaces = views::brand::TYPEFACES
-        .iter()
-        .map(|face| FormChoice {
-            value: face.id.to_string(),
-            label: face.label.to_string(),
-        })
-        .chain(std::iter::once(FormChoice {
-            value: "uploaded".to_string(),
-            label: "Uploaded font".to_string(),
-        }))
-        .collect();
     let font_licences = store::brands::FONT_LICENCES
         .iter()
         .map(|licence| FormChoice {
@@ -103,7 +92,7 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
         role,
         key: key.clone(),
         fields: None,
-        typefaces,
+        typefaces: Vec::new(),
         font_licences,
         csrf_token,
         error: query.error.clone(),
@@ -132,6 +121,25 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
         Err(error) => return Err(ServerFnError::new(error.to_string())),
     };
 
+    // ENG-659: the typeface select draws only from this Firm's own uploaded
+    // fonts — never the compiled `views::brand::TYPEFACES` catalog. Empty
+    // when the Firm has uploaded no font yet; a historical row with no
+    // `firm_id` at all (pre-ENG-659, not yet visited by the schema
+    // backfill) offers none either, since there is no Firm to scope the
+    // list to.
+    let typefaces = match brand.firm_id {
+        Some(firm_id) => store::brands::uploaded_font_families_for_firm(&surreal, firm_id)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?
+            .into_iter()
+            .map(|family| FormChoice {
+                value: family.clone(),
+                label: family,
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+
     let logo_url = brand
         .logo_object_key
         .as_deref()
@@ -151,6 +159,7 @@ pub async fn get_brands_edit() -> Result<BrandsEditView, ServerFnError> {
             logo_url,
             font,
         }),
+        typefaces,
         ..base
     })
 }
@@ -192,15 +201,29 @@ fn presentation_form(view: &BrandsEditView, fields: &BrandPresentationFields) ->
         .iter()
         .map(|choice| Choice::new(choice.value.clone(), choice.label.clone()))
         .collect();
-    let form_fields = vec![
-        Field::text("Name", "name", fields.name.clone()).required(),
-        Field::select(
-            "Typeface",
-            "typeface",
-            type_opts,
-            Some(fields.typeface.clone()),
-        )
-        .required(),
+    let has_uploaded_fonts = !type_opts.is_empty();
+
+    let mut form_fields = vec![Field::text("Name", "name", fields.name.clone()).required()];
+    // ENG-659: the typeface select's options are this Firm's own uploaded
+    // font family names — never the compiled catalog — so choosing one sets
+    // both the brand's `typeface` (always "uploaded" once any family is
+    // chosen) and `font_family` fields together. There is no separate
+    // "Font family" text input any more: a Firm with no uploaded font yet
+    // has nothing to choose, so the control is omitted entirely rather than
+    // rendered empty and required.
+    if has_uploaded_fonts {
+        form_fields.push(
+            Field::select(
+                "Typeface",
+                "typeface",
+                type_opts,
+                Some(fields.font_family.clone()),
+            )
+            .required()
+            .help("This Firm's uploaded font family names. Upload a .woff2 below to add one."),
+        );
+    }
+    form_fields.push(
         Field::text(
             "Primary colour",
             "primary_color",
@@ -213,14 +236,15 @@ fn presentation_form(view: &BrandsEditView, fields: &BrandPresentationFields) ->
              clear WCAG AA 4.5:1, and it must clear 3:1 against the light page surface, or the \
              save is refused naming the ratio.",
         ),
-        Field::text("Font family", "font_family", fields.font_family.clone()).help(
-            "The CSS font-family name for an uploaded font. Only used when Typeface is \
-             \"Uploaded font\".",
-        ),
-    ];
+    );
     rsx! {
         if let Some(error) = &view.error {
             p { class: "nav-form-error", role: "alert", "{error}" }
+        }
+        if !has_uploaded_fonts {
+            p { class: "muted", id: "no-uploaded-fonts",
+                "No fonts uploaded yet for this Firm — upload one below, then it appears here."
+            }
         }
         FormCard {
             title: format!("Edit {}", fields.name),
@@ -345,16 +369,12 @@ mod tests {
             logo: None,
             key: "neon".to_string(),
             fields,
-            typefaces: vec![
-                FormChoice {
-                    value: "gorp-serif".to_string(),
-                    label: "GORP Serif".to_string(),
-                },
-                FormChoice {
-                    value: "uploaded".to_string(),
-                    label: "Uploaded font".to_string(),
-                },
-            ],
+            // ENG-659: a Firm's own uploaded font family names, never the
+            // compiled catalog.
+            typefaces: vec![FormChoice {
+                value: "Custom Sans".to_string(),
+                label: "Custom Sans".to_string(),
+            }],
             font_licences: vec![FormChoice {
                 value: "OFL-1.1".to_string(),
                 label: "OFL-1.1".to_string(),
@@ -367,9 +387,9 @@ mod tests {
     fn fields() -> BrandPresentationFields {
         BrandPresentationFields {
             name: "Neon Law".to_string(),
-            typeface: "gorp-serif".to_string(),
+            typeface: "uploaded".to_string(),
             primary_color: "#007c91".to_string(),
-            font_family: String::new(),
+            font_family: "Custom Sans".to_string(),
             logo_url: None,
             font: None,
         }
@@ -387,7 +407,32 @@ mod tests {
         assert!(html.contains(r#"name="primary_color""#), "{html}");
         assert!(html.contains(r##"value="#007c91""##), "{html}");
         assert!(!html.contains(r#"name="palette""#), "{html}");
+        assert!(!html.contains(r#"name="font_family""#), "{html}");
         assert!(html.contains("www.neonlaw.com"), "{html}");
+    }
+
+    /// ENG-659: the typeface select's only options are this Firm's own
+    /// uploaded font family names — the compiled catalog never appears,
+    /// whether or not this Firm has uploaded a font yet.
+    #[test]
+    fn the_typeface_select_never_lists_the_compiled_catalog() {
+        let html = dioxus_ssr::render_element(brands_edit_body(&view(Some(fields()))));
+        for compiled in ["gorp-serif", "tinos", "system-serif", "system-sans"] {
+            assert!(!html.contains(compiled), "{compiled} leaked into: {html}");
+        }
+        assert!(html.contains("Custom Sans"), "{html}");
+    }
+
+    /// ENG-659: a Firm with no uploaded font yet gets no typeface select at
+    /// all — an empty required `<select>` would be unusable — and sees an
+    /// explanation instead.
+    #[test]
+    fn a_firm_with_no_uploaded_fonts_sees_no_typeface_select() {
+        let mut view = view(Some(fields()));
+        view.typefaces = Vec::new();
+        let html = dioxus_ssr::render_element(brands_edit_body(&view));
+        assert!(!html.contains(r#"name="typeface""#), "{html}");
+        assert!(html.contains("No fonts uploaded yet"), "{html}");
     }
 
     #[test]

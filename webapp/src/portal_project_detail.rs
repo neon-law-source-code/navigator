@@ -1254,15 +1254,52 @@ mod tests {
     async fn project_brand_chrome_uses_the_project_brand_not_the_request_brand() {
         let surreal = store::surreal::test_support::mem().await;
         let key = "client-portal-brand";
+        // A brand's `legal_entity` is inherited from its Firm's own linked
+        // Entity (ENG-659) — never caller input — so the Firm here is on an
+        // Entity named exactly what this test expects to read back.
+        let entity = store::entities::create(
+            &surreal,
+            &store::entities::NewEntity {
+                name: "Shook Law PLLC".to_string(),
+                entity_type_id: store::test_support::SEED_ENTITY_TYPE_ID,
+                jurisdiction_id: store::test_support::SEED_ENTITY_JURISDICTION_ID,
+                phone: None,
+                url: None,
+                xero_id: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .expect("test entity inserts");
+        let admin = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Project Brand Admin DRI",
+                "project-brand-admin-dri@example.com",
+                store::persons::Role::Admin,
+            ),
+        )
+        .await
+        .expect("test admin inserts");
+        let firm = store::firms::create(
+            &surreal,
+            &store::firms::NewFirm {
+                name: "Project Practice Firm".to_string(),
+                status: "active".to_string(),
+                entity_id: entity.id,
+                admin_dri_person_id: admin.id,
+            },
+        )
+        .await
+        .expect("test firm inserts");
         store::brands::create(
             &surreal,
-            store::persons::Role::Owner,
-            None,
+            store::persons::Role::Admin,
+            Some(admin.id),
             &store::brands::NewBrand {
                 name: "Project Practice".to_string(),
                 key: key.to_string(),
-                legal_entity: Some("Shook Law PLLC".to_string()),
-                is_law_firm: true,
+                firm_id: Some(firm.id),
                 ..store::brands::NewBrand::default()
             },
         )
